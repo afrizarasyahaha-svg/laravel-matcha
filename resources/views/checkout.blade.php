@@ -115,31 +115,31 @@
                                 </div>
                             </div>
                         </div>
-                    </div>
 
-                    <h3 class="mt-6 text-sm font-bold text-matcha-900">3. Metode Pembayaran</h3>
-                    <p class="text-xs text-stone-500">Metode yang dipilih tidak dapat diubah setelah pesanan dibuat.</p>
+                        <h3 class="mt-6 text-sm font-bold text-matcha-900">3. Metode Pembayaran</h3>
+                        <p class="text-xs text-stone-500">Metode yang dipilih tidak dapat diubah setelah pesanan dibuat.</p>
 
-                    <div class="mt-3 grid gap-3 sm:grid-cols-3">
-                        @foreach ($paymentMethods as $method)
-                            <label class="cursor-pointer">
-                                <input type="radio" name="payment_method" value="{{ $method['key'] }}" data-payment-method
-                                    @checked($initialMethod === $method['key']) class="peer sr-only">
-                                <span class="flex h-full items-start gap-3 rounded-xl border border-matcha-200 bg-white p-3 text-left transition-all duration-300 peer-checked:border-matcha-700 peer-checked:bg-matcha-50 peer-checked:ring-1 peer-checked:ring-matcha-700 hover:-translate-y-0.5 hover:border-matcha-500 hover:shadow-soft">
-                                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-matcha-100 text-base text-matcha-700">
-                                        <i class="bi {{ $method['icon'] }}"></i>
+                        <div class="mt-3 grid gap-3 sm:grid-cols-3">
+                            @foreach ($paymentMethods as $method)
+                                <label class="group/pay cursor-pointer">
+                                    <input type="radio" name="payment_method" value="{{ $method['key'] }}" data-payment-method
+                                        @checked($initialMethod === $method['key']) class="peer sr-only">
+                                    <span class="flex h-full items-start gap-3 rounded-xl border border-matcha-200 bg-white p-3 text-left transition-all duration-300 hover:-translate-y-0.5 hover:border-matcha-500 hover:shadow-soft peer-checked:border-matcha-700 peer-checked:bg-matcha-50 peer-checked:ring-1 peer-checked:ring-matcha-700">
+                                        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-matcha-100 text-base text-matcha-700 transition-colors duration-300 group-has-[:checked]/pay:bg-matcha-700 group-has-[:checked]/pay:text-white">
+                                            <i class="bi {{ $method['icon'] }}"></i>
+                                        </span>
+                                        <span>
+                                            <span class="block text-sm font-semibold text-matcha-900">{{ $method['title'] }}</span>
+                                            <span class="block text-xs text-stone-500">{{ $method['desc'] }}</span>
+                                        </span>
                                     </span>
-                                    <span>
-                                        <span class="block text-sm font-semibold text-matcha-900">{{ $method['title'] }}</span>
-                                        <span class="block text-xs text-stone-500">{{ $method['desc'] }}</span>
-                                    </span>
-                                </span>
-                            </label>
-                        @endforeach
+                                </label>
+                            @endforeach
+                        </div>
+                        @error('payment_method')
+                            <p class="mt-2 text-xs font-semibold text-rose-600">{{ $message }}</p>
+                        @enderror
                     </div>
-                    @error('payment_method')
-                        <p class="mt-2 text-xs font-semibold text-rose-600">{{ $message }}</p>
-                    @enderror
                 </div>
 
                 <div class="lg:col-span-4">
@@ -175,30 +175,10 @@
                                     {{ \App\Models\Order::PAYMENT_METHOD_LABELS[$initialMethod] ?? 'Tunai' }}
                                 </dd>
                             </div>
-                            <div class="flex justify-between">
-                                <dt class="text-stone-500">Metode pembayaran</dt>
-                                <dd class="font-semibold" data-payment-method-label>
-                                    {{ \App\Models\Order::PAYMENT_METHOD_LABELS[$initialMethod] ?? 'Tunai' }}
-                                </dd>
-                            </div>
                         </dl>
                         <div class="mt-4 flex items-center justify-between border-t border-matcha-100 pt-4">
                             <span class="text-sm font-semibold text-matcha-900">Total pembayaran</span>
                             <span class="text-lg font-extrabold text-matcha-700" data-total>Rp {{ number_format($initialTotal, 0, ',', '.') }}</span>
-                        </div>
-
-                        {{-- Backend hanya mendukung bayar di tempat, jadi hanya ada satu metode --}}
-                        <div class="mt-4 text-xs font-semibold text-stone-600">Metode pembayaran</div>
-                        <div class="mt-1.5 grid gap-2">
-                            <div class="flex items-center gap-3 rounded-xl border border-matcha-700 bg-matcha-50 px-3 py-2.5 text-left text-sm ring-1 ring-matcha-700">
-                                <i class="bi bi-cash-coin text-lg text-matcha-700"></i>
-                                <span>
-                                    <span class="block font-semibold text-matcha-900">Tunai</span>
-                                    <span class="block text-xs text-stone-500">
-                                        <span data-label-antar>Bayar ke kurir saat pesanan tiba</span><span data-label-ambil hidden>Bayar di gerai saat ambil</span>
-                                    </span>
-                                </span>
-                            </div>
                         </div>
 
                         <ul class="mt-4 space-y-1.5 border-t border-matcha-100 pt-4 text-xs text-stone-500">
@@ -220,52 +200,5 @@
                 </div>
             </div>
         </form>
-
-        <script>
-            (function () {
-                const subtotal = {{ (float) $subtotal }};
-                const ongkir = {{ (float) $ongkir }};
-                const form = document.getElementById('checkout-form');
-                const money = (value) => 'Rp ' + Math.round(value).toLocaleString('id-ID');
-                const paymentLabels = {
-                    CASH: 'Tunai',
-                    QRIS: 'QRIS',
-                    BANK_TRANSFER: 'Transfer Bank',
-                };
-                const paymentNotes = {
-                    CASH: 'Pembayaran tunai dilakukan langsung di gerai / saat pesanan diantar.',
-                    QRIS: 'Kamu akan diarahkan ke Midtrans untuk scan QRIS setelah pesanan dibuat.',
-                    BANK_TRANSFER: 'Kamu akan diarahkan ke Midtrans untuk pembayaran Virtual Account setelah pesanan dibuat.',
-                };
-
-                const sync = () => {
-                    const type = form.querySelector('[data-type]:checked')?.value || 'antar';
-                    const antar = type === 'antar';
-                    const method = form.querySelector('[data-payment-method]:checked')?.value || 'CASH';
-                    const isCash = method === 'CASH';
-
-                    form.querySelectorAll('[data-antar]').forEach((el) => el.hidden = !antar);
-                    form.querySelectorAll('[data-ambil]').forEach((el) => el.hidden = antar);
-                    form.querySelectorAll('[data-label-antar]').forEach((el) => el.hidden = !antar);
-                    form.querySelectorAll('[data-label-ambil]').forEach((el) => el.hidden = antar);
-
-                    const address = document.getElementById('address');
-                    address.required = antar;
-
-                    const shipping = antar ? ongkir : 0;
-                    form.querySelector('[data-shipping-label]').textContent = shipping ? money(shipping) : 'Gratis';
-                    form.querySelector('[data-type-label]').textContent = antar ? 'Diantar' : 'Ambil sendiri';
-                    form.querySelector('[data-total]').textContent = money(subtotal + shipping);
-
-                    form.querySelector('[data-payment-method-label]').textContent = paymentLabels[method] || 'Tunai';
-                    form.querySelector('[data-submit-label]').textContent = isCash ? 'Buat Pesanan' : 'Buat Pesanan & Bayar';
-                    form.querySelector('[data-payment-note]').textContent = paymentNotes[method] || paymentNotes.CASH;
-                };
-
-                form.querySelectorAll('[data-type]').forEach((radio) => radio.addEventListener('change', sync));
-                form.querySelectorAll('[data-payment-method]').forEach((radio) => radio.addEventListener('change', sync));
-                sync();
-            })();
-        </script>
     @endif
 </x-layouts.dashboard>

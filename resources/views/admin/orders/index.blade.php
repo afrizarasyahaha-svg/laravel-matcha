@@ -87,43 +87,51 @@
                             </td>
 
                             <td class="whitespace-nowrap">
-                                @if($order->isCashPayment() && $order->payment_status !== 'PAID' && $order->order_status !== 'CANCELLED')
-                                <form method="POST" action="{{ route('admin.orders.paid', $order) }}" class="mb-1">
-                                    @csrf
-                                    @method('PATCH')
-                                    <button type="submit" class="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-red-100 transition hover:bg-emerald-700">
-                                        <i class="bi bi-cash-coin mr-1"></i> Tandai Lunas
-                                    </button>
-                                </form>
-                                @endif
+                                <div class="flex flex-wrap items-center gap-1.5">
+                                    @if($order->isCashPayment() && $order->payment_status !== 'PAID' && $order->order_status !== 'CANCELLED')
+                                    <form method="POST" action="{{ route('admin.orders.paid', $order) }}">
+                                        @csrf
+                                        @method('PATCH')
+                                        <button type="submit" class="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-emerald-700">
+                                            <i class="bi bi-cash-coin mr-1"></i> Tandai Lunas
+                                        </button>
+                                    </form>
+                                    @endif
 
-                                <form method="POST" action="{{ route('admin.orders.status', $order) }}" class="flex items-center gap-1.5">
+                                    <button type="button" data-open-dialog="order-{{ $order->id }}"
+                                        class="rounded-lg border border-matcha-200 px-2.5 py-1 text-xs font-semibold text-matcha-700 transition hover:bg-matcha-50">
+                                        <i class="bi bi-eye mr-1"></i> Detail
+                                    </button>
+
+                                    @if($order->order_status === 'PROCESSING' && $order->payment_status === 'PAID')
+                                    <form method="POST" action="{{ route('admin.orders.status', $order) }}"
+                                        data-confirm="Tandai pesanan {{ $order->code }} selesai?">
+                                        @csrf
+                                        @method('PATCH')
+                                        <input type="hidden" name="status" value="COMPLETED">
+                                        <button type="submit" class="btn-matcha !px-2.5 !py-1 text-xs">
+                                            <i class="bi bi-check2-circle"></i> Selesaikan
+                                        </button>
+                                    </form>
+                                    @endif
+                                </div>
+
+                                <form method="POST" action="{{ route('admin.orders.status', $order) }}" class="mt-1 flex items-center gap-1.5">
                                     @csrf
                                     @method('PATCH')
                                     <select name="status" class="input-matcha !w-auto !px-2 !py-1 text-xs">
                                         @foreach (['PROCESSING', 'COMPLETED', 'CANCELLED'] as $statusOption)
-                                        <option value="{{ $statusOption }}" @selected($order->order_status === $statusOption)>
+                                        <option value="{{ $statusOption }}" @selected($order->order_status === $statusOption)
+                                            @disabled($statusOption === 'COMPLETED' && $order->payment_status !== 'PAID')>
                                             {{ $statusLabels[$statusOption] }}
                                         </option>
                                         @endforeach
                                     </select>
                                     <button type="submit" class="btn-matcha !px-2.5 !py-1 text-xs">Simpan</button>
                                 </form>
-
-                                <details class="mt-1">
-                                    <summary class="cursor-pointer text-xs font-semibold text-matcha-700">Detail</summary>
-                                    <ul class="mt-1 space-y-1 rounded-lg bg-matcha-50/70 p-2 text-xs text-stone-600">
-                                        @foreach ($order->items as $item)
-                                        <li class="flex justify-between gap-2">
-                                            <span>{{ $item->quantity }}× {{ $item->product?->name ?? 'Produk dihapus' }}
-                                                <span class="text-stone-400">({{ $item->variant?->variant_name ?? 'tanpa varian' }})</span>
-                                            </span>
-                                            <span class="shrink-0">Rp {{ number_format($item->subtotal, 0, ',', '.') }}</span>
-                                        </li>
-                                        @endforeach
-                                        <li class="border-t border-matcha-100 pt-1 text-stone-500">{{ $order->shipping_address }}</li>
-                                    </ul>
-                                </details>
+                                @if($order->payment_status !== 'PAID' && $order->order_status !== 'CANCELLED')
+                                    <p class="mt-1 text-[11px] text-stone-400">Status Selesai aktif setelah pesanan lunas.</p>
+                                @endif
                             </td>
                         </tr>
                         @empty

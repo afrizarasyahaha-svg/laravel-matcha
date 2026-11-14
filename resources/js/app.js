@@ -156,8 +156,22 @@ function initCheckout() {
     const money = (v) => 'Rp ' + Math.round(v).toLocaleString('id-ID');
     const fields = document.getElementById('checkout-fields');
 
+    const paymentLabels = {
+        CASH: 'Tunai',
+        QRIS: 'QRIS',
+        BANK_TRANSFER: 'Transfer Bank',
+    };
+    const paymentNotes = {
+        CASH: 'Pembayaran tunai dilakukan langsung di gerai / saat pesanan diantar.',
+        QRIS: 'Kamu akan diarahkan ke Midtrans untuk scan QRIS setelah pesanan dibuat.',
+        BANK_TRANSFER: 'Kamu akan diarahkan ke Midtrans untuk pembayaran Virtual Account setelah pesanan dibuat.',
+    };
+
     const sync = (animate) => {
         const antar = (form.querySelector('[data-type]:checked')?.value || 'antar') === 'antar';
+        const method = form.querySelector('[data-payment-method]:checked')?.value || 'CASH';
+        const isCash = method === 'CASH';
+
         form.querySelectorAll('[data-antar]').forEach((el) => (el.hidden = !antar));
         form.querySelectorAll('[data-ambil]').forEach((el) => (el.hidden = antar));
         form.querySelectorAll('[data-label-antar]').forEach((el) => (el.hidden = !antar));
@@ -169,6 +183,10 @@ function initCheckout() {
         form.querySelector('[data-type-label]').textContent = antar ? 'Diantar' : 'Ambil sendiri';
         form.querySelector('[data-total]').textContent = money(subtotal + shipping);
 
+        form.querySelector('[data-payment-method-label]').textContent = paymentLabels[method] || 'Tunai';
+        form.querySelector('[data-submit-label]').textContent = isCash ? 'Buat Pesanan' : 'Buat Pesanan & Bayar';
+        form.querySelector('[data-payment-note]').textContent = paymentNotes[method] || paymentNotes.CASH;
+
         if (animate && fields) {
             fields.classList.remove('animate-fade-up');
             void fields.offsetWidth;
@@ -177,6 +195,7 @@ function initCheckout() {
     };
 
     form.querySelectorAll('[data-type]').forEach((r) => r.addEventListener('change', () => sync(true)));
+    form.querySelectorAll('[data-payment-method]').forEach((r) => r.addEventListener('change', () => sync(false)));
     sync(false);
 }
 
