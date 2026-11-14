@@ -15,6 +15,7 @@ class Navigation
         ];
     }
 
+   
     public static function admin(): array
     {
         return [
@@ -22,6 +23,7 @@ class Navigation
             ['label' => 'Produk & Menu', 'icon' => 'bi-box-seam', 'url' => route('admin.products.index'), 'active' => 'admin.products.*'],
             ['label' => 'Stok & Persediaan', 'icon' => 'bi-clipboard-data', 'url' => route('admin.stock.index'), 'active' => 'admin.stock.*'],
             ['label' => 'Pesanan', 'icon' => 'bi-receipt', 'url' => route('admin.orders.index'), 'active' => 'admin.orders.*'],
+            ['label' => 'Laporan Penjualan', 'icon' => 'bi-bar-chart-line', 'url' => route('admin.reports.daily'), 'active' => 'admin.reports.*'],
         ];
     }
 }
