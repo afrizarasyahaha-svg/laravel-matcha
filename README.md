@@ -15,17 +15,20 @@ README ini menjelaskan cara menjalankan aplikasi **tanpa Docker**: mulai dari cl
 - Keranjang belanja berbasis session (tambah, ubah jumlah, hapus).
 - Checkout sebagai tamu maupun pengguna yang login.
 - Pilihan pesanan **diantar** (ongkir flat Rp10.000) atau **ambil sendiri**.
+- Pilihan metode pembayaran saat checkout: **Tunai**, **QRIS**, atau **Transfer Bank**. Metode terkunci setelah pesanan dibuat.
 - Riwayat pesanan; tamu melihat riwayat yang tersimpan di session browser.
 
 ### Admin
 - Dashboard ringkasan omzet, pesanan, dan stok menipis.
 - Daftar pesanan dengan filter status dan pencarian.
 - Mengubah status pesanan: `PROCESSING`, `COMPLETED`, `CANCELLED`.
+- Menandai pesanan **Tunai** sebagai lunas setelah uang diterima di gerai.
 - CRUD produk beserta varian dan stok per varian.
 - Halaman monitoring stok (perubahan stok dilakukan melalui form produk).
 
 ### Catatan scope
-- Pembayaran masih dilakukan di gerai / saat pesanan diantar; tidak ada integrasi payment gateway.
+- Pembayaran online memakai Midtrans Snap: **QRIS** dan **Transfer Bank (Virtual Account)**.
+- Pembayaran **Tunai** tidak memakai Midtrans dan dikonfirmasi manual oleh admin.
 - Diskon member, laporan keuangan, notifikasi, manajemen user, dan login Google tidak termasuk dalam aplikasi ini.
 
 ---
@@ -287,8 +290,10 @@ Setelah login:
 1. Buka `http://127.0.0.1:8000` → landing page.
 2. Klik **Katalog** atau **Lihat Menu Kami** untuk melihat produk.
 3. Pilih produk, tentukan varian/gula/catatan, lalu tambahkan ke keranjang.
-4. Buka **Keranjang**, lanjut ke **Checkout**, isi data penerima, pilih **Diantar** atau **Ambil sendiri**.
-5. Setelah pesanan dibuat, Anda diarahkan ke **Riwayat Pesanan**.
+4. Buka **Keranjang**, lanjut ke **Checkout**, isi data penerima, pilih **Diantar** atau **Ambil sendiri**, lalu pilih metode pembayaran **Tunai**, **QRIS**, atau **Transfer Bank**.
+5. Setelah pesanan dibuat:
+   - **Tunai**: diarahkan ke halaman pembayaran berisi instruksi bayar di gerai. Admin menandai lunas setelah uang diterima.
+   - **QRIS / Transfer Bank**: diarahkan ke halaman pembayaran Midtrans. Jika Midtrans dikonfigurasi, tombol bayar akan muncul; jika tidak, pembuatan token akan gagal dan pesanan tetap tersimpan di **Riwayat Pesanan**.
 6. Untuk masuk sebagai admin, buka `/login`, gunakan akun admin, lalu Anda akan diarahkan ke dashboard `/admin`.
 
 Halaman penting:
@@ -300,6 +305,7 @@ Halaman penting:
 | Katalog | `/katalog` |
 | Keranjang | `/keranjang` |
 | Checkout | `/checkout` |
+| Pembayaran | `/payments/{id}` |
 | Riwayat pesanan | `/riwayat-pesanan` |
 | Login | `/login` |
 | Register | `/register` |
@@ -307,6 +313,66 @@ Halaman penting:
 | Produk admin | `/admin/produk` |
 | Stok admin | `/admin/stok` |
 | Pesanan admin | `/admin/pesanan` |
+
+---
+
+## 10. Integrasi pembayaran Midtrans (opsional)
+
+Fitur pembayaran online memakai Midtrans Snap (mode sandbox). Tanpa kredensial, aplikasi tetap bisa dipakai untuk memesan, tetapi pembayaran QRIS/Transfer Bank tidak dapat diproses.
+
+| Metode | Cara bayar | Status awal pesanan |
+|---|---|---|
+| **Tunai** | Bayar di gerai atau saat pesanan diantar (COD). Tidak memakai Midtrans. | `PROCESSING`, `UNPAID` sampai admin menandai lunas |
+| **QRIS** | Scan QRIS melalui Midtrans Snap. | `PENDING_PAYMENT`, `UNPAID` |
+| **Transfer Bank** | Virtual Account melalui Midtrans Snap. | `PENDING_PAYMENT`, `UNPAID` |
+
+Metode dipilih sekali di halaman checkout dan tidak dapat diubah setelah pesanan dibuat.
+
+1. Daftar/masuk ke [dashboard Midtrans](https://dashboard.sandbox.midtrans.com/), lalu salin **Server Key** dan **Client Key** dari menu *Settings → Access Keys*.
+2. Isi variabel berikut di `.env`:
+
+   ```env
+   MIDTRANS_MERCHANT_ID=G123456789
+   MIDTRANS_CLIENT_KEY=SB-Mid-client-xxxxxxxx
+   MIDTRANS_SERVER_KEY=SB-Mid-server-xxxxxxxx
+   MIDTRANS_IS_PRODUCTION=false
+   ```
+
+3. Aktifkan kanal pembayaran di dashboard Midtrans (*Settings → Payment Channels*):
+   - **QRIS** (`other_qris`)
+   - **Virtual Account**: BCA, BNI, BRI, Permata, Mandiri Bill (`echannel`), dan `other_va`
+
+   Kanal yang belum aktif dapat membuat Midtrans menolak permintaan pembuatan transaksi Snap.
+
+4. Bersihkan cache konfigurasi:
+
+   ```bash
+   php artisan config:clear
+   ```
+
+5. Agar notifikasi pembayaran (webhook) masuk ke laptop lokal, jalankan tunnel:
+
+   ```bash
+   ngrok http 8000
+   ```
+
+   Lalu isi **Payment Notification URL** di dashboard Midtrans dengan:
+
+   ```text
+   https://<domain-ngrok>/payments/midtrans/notification
+   ```
+
+   Set `APP_URL` di `.env` ke domain ngrok yang sama, lalu jalankan `php artisan config:clear`.
+
+6. Alur verifikasi:
+
+   - **Tunai** → pesanan langsung berstatus `PROCESSING` tanpa baris `payments` dan tanpa token Snap. Admin menekan **Tandai Lunas** di halaman pesanan admin setelah uang diterima.
+   - **QRIS / Transfer Bank** → checkout otomatis membuat baris `payments` + Snap token dengan kanal yang dibatasi sesuai metode → diarahkan ke `/payments/{id}`.
+   - Klik **Buka Pembayaran Midtrans** → bayar memakai simulator sandbox.
+   - Halaman pembayaran melakukan *polling* ke `/payments/{id}/status` tiap 3 detik (5 detik untuk pesanan tunai). Status akan berubah menjadi **PAID** walaupun webhook belum masuk.
+   - Jika webhook aktif, notifikasi Midtrans juga memperbarui `orders.payment_status` dan `order_status` secara otomatis.
+
+Admin tidak dapat menyelesaikan (`COMPLETED`) pesanan yang belum lunas. Tandai lunas terlebih dahulu, lalu ubah status pesanan menjadi selesai. Tanpa ngrok, pembayaran online tetap bisa diverifikasi lewat *polling* selama halaman pembayaran masih terbuka. Webhook hanya diperlukan agar status tetap sinkron saat tab ditutup.
 
 ---
 
@@ -325,6 +391,8 @@ Halaman penting:
 | Perubahan `.env` tidak terbaca | Konfigurasi tersimpan di cache | `php artisan config:clear` |
 | Permission denied di Linux/macOS | Folder `storage` / `bootstrap/cache` tidak bisa ditulis | `chmod -R 775 storage bootstrap/cache` |
 | Data demo tidak muncul | Migrasi dijalankan tanpa `--seed` | `php artisan db:seed` atau `php artisan migrate:fresh --seed` |
+| Pembayaran gagal / token tidak muncul | `MIDTRANS_SERVER_KEY` atau `MIDTRANS_CLIENT_KEY` kosong/salah | Isi kredensial sandbox di `.env`, lalu `php artisan config:clear` |
+| Status pembayaran tidak berubah setelah bayar | Halaman pembayaran ditutup sebelum polling selesai dan webhook tidak aktif | Buka kembali `/payments/{id}` atau pasang ngrok dan daftarkan Notification URL |
 
 Jika masih error, buka file `storage/logs/laravel.log` untuk melihat pesan lengkapnya.
 
@@ -587,6 +655,7 @@ Menyimpan data pesanan.
 | `shipping_fee` | DECIMAL(10,2) | Ongkir; `0` untuk ambil sendiri |
 | `total_amount` | DECIMAL(10,2) | Total akhir pesanan |
 | `order_status` | VARCHAR(255) | Default `PROCESSING` |
+| `payment_method` | VARCHAR(255) NULL | `CASH`, `QRIS`, atau `BANK_TRANSFER`; pesanan lama diisi `MIDTRANS` |
 | `created_at` | TIMESTAMP NULL | Waktu pesanan dibuat |
 | `updated_at` | TIMESTAMP NULL | Waktu diperbarui |
 

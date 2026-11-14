@@ -126,6 +126,13 @@ class DatabaseSeeder extends Seeder
 
         // 3. Orders dummy dengan skema baru & Payment dummy
         $customers = $users->where('role', 'CUSTOMER')->values();
+        $paymentMethods = [
+            Order::PAYMENT_METHOD_CASH,
+            Order::PAYMENT_METHOD_QRIS,
+            Order::PAYMENT_METHOD_BANK_TRANSFER,
+            Order::PAYMENT_METHOD_CASH,
+            Order::PAYMENT_METHOD_QRIS,
+        ];
 
         for ($i = 0; $i < 5; $i++) {
             $customer = $customers[$i % $customers->count()];
@@ -139,9 +146,17 @@ class DatabaseSeeder extends Seeder
             $deliveryType = ($shippingFee > 0) ? 'antar' : 'ambil';
             $totalAmount = $subtotal + $shippingFee;
 
+            $paymentMethod = $paymentMethods[$i % count($paymentMethods)];
+            $isCash = $paymentMethod === Order::PAYMENT_METHOD_CASH;
+
+            // Variasi status: tunai belum lunas, tunai lunas, dan QRIS selesai.
             $isCompleted = ($i === 4);
-            $orderStatus = $isCompleted ? Order::STATUS_COMPLETED : Order::STATUS_PROCESSING;
-            $paymentStatus = $isCompleted ? 'PAID' : 'UNPAID';
+            $isPaid = $isCompleted || ($isCash && $i === 3);
+            $orderStatus = $isCompleted
+                ? Order::STATUS_COMPLETED
+                : (($isCash || $isPaid) ? Order::STATUS_PROCESSING : Order::STATUS_PENDING);
+            $paymentStatus = $isPaid ? 'PAID' : 'UNPAID';
+            $expiresAt = (! $isCash && ! $isPaid) ? now()->addMinutes(15) : null;
 
             $order = Order::create([
                 'user_id' => $customer->id,
@@ -154,9 +169,11 @@ class DatabaseSeeder extends Seeder
                 'discount_amount' => 0,
                 'total_amount' => $totalAmount,
                 'delivery_type' => $deliveryType,
+                'payment_method' => $paymentMethod,
                 'order_status' => $orderStatus,
                 'payment_status' => $paymentStatus,
-                'paid_at' => $isCompleted ? now() : null,
+                'paid_at' => $isPaid ? now() : null,
+                'expires_at' => $expiresAt,
                 'completed_at' => $isCompleted ? now() : null,
                 'notes' => 'Catatan pesanan ke-' . ($i + 1),
             ]);
@@ -171,20 +188,26 @@ class DatabaseSeeder extends Seeder
                 'unit_price' => $unitPrice,
             ]);
 
-            // Buat Payment dummy untuk setiap order
+            // Pesanan tunai tidak memakai baris pembayaran Midtrans.
+            if ($isCash) {
+                continue;
+            }
+
             Payment::create([
                 'order_id' => $order->id,
                 'provider' => 'midtrans',
                 'midtrans_order_id' => 'MID-' . strtoupper(Str::random(8)),
-                'transaction_id' => $isCompleted ? 'TRX-' . rand(100000, 999999) : null,
-                'transaction_status' => $isCompleted ? 'settlement' : 'pending',
-                'fraud_status' => $isCompleted ? 'accept' : null,
-                'payment_type' => 'gopay',
+                'transaction_id' => $isPaid ? 'TRX-' . rand(100000, 999999) : null,
+                'transaction_status' => $isPaid ? 'settlement' : 'pending',
+                'fraud_status' => $isPaid ? 'accept' : null,
+                'payment_type' => $paymentMethod === Order::PAYMENT_METHOD_QRIS ? 'qris' : 'bank_transfer',
+                'payment_status' => $isPaid ? 'PAID' : 'PENDING',
                 'gross_amount' => $totalAmount,
                 'snap_token' => 'dummy_snap_token_' . Str::random(10),
                 'redirect_url' => 'https://app.sandbox.midtrans.com/snap/v2/vtweb/dummy',
                 'raw_response' => json_encode(['status_message' => 'Simulated midtrans response', 'status' => $paymentStatus]),
-                'paid_at' => $isCompleted ? now() : null,
+                'paid_at' => $isPaid ? now() : null,
+                'expires_at' => $isPaid ? null : now()->addMinutes(15),
             ]);
         }
     }

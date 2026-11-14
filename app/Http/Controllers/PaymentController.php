@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Order;
 use App\Services\Payment\MidtransService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 class PaymentController extends Controller
@@ -17,44 +18,71 @@ class PaymentController extends Controller
     }
 
     /**
+     * Pastikan pengguna berhak melihat/membayar order ini.
+     * Pemilik akun atau tamu yang order-nya tersimpan di session boleh akses.
+     */
+    private function authorizeOrderAccess(Order $order): void
+    {
+        $userId = auth()->id();
+        $guestOrders = session('guest_orders', []);
+        $isOwner = ($userId && (int) $order->user_id === (int) $userId)
+            || in_array($order->id, $guestOrders);
+
+        abort_unless($isOwner, 403, 'Unauthorized action.');
+    }
+
+    /**
      * Membuat atau mengambil token pembayaran Snap untuk sebuah order.
      */
-    public function generateToken(Request $request, Order $order): JsonResponse
+    public function generateToken(Request $request, Order $order): JsonResponse|RedirectResponse
     {
-        // 1. Validasi kepemilikan order (opsional jika menggunakan auth sanctum/session)
-        // if ($order->user_id !== $request->user()->id) {
-        //     return response()->json(['message' => 'Unauthorized'], 403);
-        // }
+        $this->authorizeOrderAccess($order);
 
-        // 2. Cek apakah order sudah lunas atau bukan status pending
+        if ($order->isCashPayment()) {
+            $message = 'Pesanan ini dibayar tunai. Admin akan menandainya lunas setelah pembayaran diterima.';
+
+            return $request->expectsJson()
+                ? response()->json(['message' => $message], 409)
+                : back()->with('error', $message);
+        }
+
         if ($order->payment_status === 'PAID') {
-            return response()->json([
-                'message' => 'Order sudah lunas.',
-            ], 409); // 409 Conflict
+            return $request->expectsJson()
+                ? response()->json(['message' => 'Order sudah lunas.'], 409)
+                : back()->with('error', 'Pesanan ini sudah lunas.');
         }
 
         if ($order->order_status === Order::STATUS_CANCELLED) {
-            return response()->json([
-                'message' => 'Order sudah dibatalkan.',
-            ], 400);
+            return $request->expectsJson()
+                ? response()->json(['message' => 'Order sudah dibatalkan.'], 400)
+                : back()->with('error', 'Pesanan ini sudah dibatalkan.');
         }
 
         try {
-            // 3. Panggil service Midtrans untuk membuat transaksi Snap
             $result = $this->midtransService->createSnapTransaction($order);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Gagal membuat token Midtrans', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
 
+            return $request->expectsJson()
+                ? response()->json([
+                    'status' => 'error',
+                    'message' => 'Gagal membuat transaksi Midtrans: ' . $e->getMessage(),
+                ], 500)
+                : back()->with('error', 'Gagal membuat transaksi Midtrans: ' . $e->getMessage());
+        }
+
+        if ($request->expectsJson()) {
             return response()->json([
                 'status' => 'success',
                 'message' => 'Token pembayaran berhasil dibuat.',
                 'data' => $result,
-            ], 200);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Gagal membuat transaksi Midtrans: ' . $e->getMessage(),
-            ], 500);
+            ]);
         }
+
+        return back()->with('success', 'Token pembayaran berhasil dibuat.');
     }
 
     /**
@@ -62,19 +90,35 @@ class PaymentController extends Controller
      */
     public function show(Order $order)
     {
-        // Otorisasi: Pastikan hanya pemilik order yang bisa membuka halaman ini
-        $userId = auth()->id();
-        $guestOrders = session('guest_orders', []);
-        $isOwner = ($userId && $order->user_id === $userId) || in_array($order->id, $guestOrders);
+        $this->authorizeOrderAccess($order);
 
-        if (!$isOwner) {
-            abort(403, 'Unauthorized action.');
-        }
-
-        // Muat relasi item produk dan pembayaran
         $order->load(['items.product', 'payment']);
 
-        return view('payments.show', compact('order'));
+        $paymentError = null;
+        $tokenExpired = $order->payment?->expires_at?->isPast() ?? false;
+        $needsToken = ! $order->payment?->snap_token || $tokenExpired;
+
+        // Pesanan tunai tidak memakai Snap; halaman hanya menampilkan
+        // instruksi pembayaran di gerai.
+        if (
+            $order->usesMidtrans()
+            && $needsToken
+            && $order->payment_status !== 'PAID'
+            && $order->order_status !== Order::STATUS_CANCELLED
+        ) {
+            try {
+                $this->midtransService->createSnapTransaction($order);
+                $order->refresh()->load(['items.product', 'payment']);
+            } catch (\Throwable $e) {
+                $paymentError = $e->getMessage();
+                \Illuminate\Support\Facades\Log::warning('Gagal menyiapkan pembayaran Midtrans', [
+                    'order_id' => $order->id,
+                    'error' => $paymentError,
+                ]);
+            }
+        }
+
+        return view('payments.show', compact('order', 'paymentError'));
     }
 
     /**
@@ -82,17 +126,15 @@ class PaymentController extends Controller
      */
     public function status(Order $order)
     {
-        // Otorisasi: Pastikan hanya pemilik order yang bisa mengakses statusnya
-        $userId = auth()->id();
-        $guestOrders = session('guest_orders', []);
-        $isOwner = ($userId && $order->user_id === $userId) || in_array($order->id, $guestOrders);
+        $this->authorizeOrderAccess($order);
 
-        if (!$isOwner) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
-        // Jika belum lunas, tanya langsung ke Midtrans (tidak bergantung webhook/ngrok)
-        if ($order->payment_status !== 'PAID' && $order->payment?->midtrans_order_id) {
+        // Jika belum lunas, tanya langsung ke Midtrans (tidak bergantung webhook/ngrok).
+        // Pesanan tunai tidak punya transaksi Midtrans sehingga dilewati.
+        if (
+            $order->usesMidtrans()
+            && $order->payment_status !== 'PAID'
+            && $order->payment?->midtrans_order_id
+        ) {
             try {
                 $this->midtransService->syncFromMidtrans($order);
                 $order->refresh();
@@ -110,6 +152,7 @@ class PaymentController extends Controller
             'status' => $payment->transaction_status ?? 'pending',
             'order_status' => $order->order_status,
             'payment_status' => $order->payment_status,
+            'payment_method' => $order->payment_method,
             'expires_at' => $payment?->expires_at?->toIso8601String(),
         ]);
     }
@@ -125,40 +168,5 @@ class PaymentController extends Controller
         } catch (\Exception $e) {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 400);
         }
-    }
-
-    /**
-     * SEMENTARA: diagnosa pembayaran. Hapus setelah masalah selesai.
-     */
-    public function debug(Order $order)
-    {
-        $userId = auth()->id();
-        $guestOrders = session('guest_orders', []);
-        $isOwner = ($userId && $order->user_id === $userId) || in_array($order->id, $guestOrders);
-
-        if (!$isOwner) {
-            abort(403);
-        }
-
-        $payment = $order->payment;
-        $key = (string) config('services.midtrans.server_key');
-
-        $out = [
-            'order' => $order->only(['id', 'user_id', 'order_status', 'payment_status', 'paid_at']),
-            'payment_row' => $payment?->only(['midtrans_order_id', 'transaction_status', 'payment_status', 'gross_amount']),
-            'server_key_dipakai' => substr($key, 0, 14) . '...' . substr($key, -4) . ' (panjang ' . strlen($key) . ')',
-            'is_production' => (bool) config('services.midtrans.is_production'),
-        ];
-
-        try {
-            $out['midtrans_status_api'] = json_decode(
-                json_encode(\Midtrans\Transaction::status($payment->midtrans_order_id)),
-                true
-            );
-        } catch (\Throwable $e) {
-            $out['midtrans_status_error'] = $e->getMessage();
-        }
-
-        return response()->json($out, 200, [], JSON_PRETTY_PRINT);
     }
 }

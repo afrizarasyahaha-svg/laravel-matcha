@@ -54,9 +54,9 @@
                                     <td><x-status-badge :status="$order->order_status" /></td>
                                     <td>
                                         <span class="px-2.5 py-1 text-xs font-bold rounded-full 
-                                            {{ in_array($order->payment_status, ['PAID', 'settlement']) ? 'bg-emerald-100 text-emerald-800' : '' }}
+                                            {{ in_array($order->payment_status, ['PAID', 'settlement', 'SETTLEMENT']) ? 'bg-emerald-100 text-emerald-800' : '' }}
                                             {{ in_array($order->payment_status, ['PENDING', 'UNPAID', '']) ? 'bg-amber-100 text-amber-800' : '' }}
-                                            {{ in_array($order->payment_status, ['EXPIRED', 'CANCELLED', 'deny']) ? 'bg-rose-100 text-rose-800' : '' }}">
+                                            {{ in_array($order->payment_status, ['EXPIRED', 'CANCELLED', 'CANCEL', 'DENIED', 'deny']) ? 'bg-rose-100 text-rose-800' : '' }}">
                                             {{ $order->payment_status ?? 'UNPAID' }}
                                         </span>
                                     </td>

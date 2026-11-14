@@ -15,7 +15,7 @@
                 <select name="status" class="input-matcha !w-auto !py-1.5 text-sm">
                     <option value="">Semua status</option>
                     @foreach ($statusLabels as $value => $label)
-                        <option value="{{ $value }}" @selected($status === $value)>{{ $label }}</option>
+                    <option value="{{ $value }}" @selected($status===$value)>{{ $label }}</option>
                     @endforeach
                 </select>
                 <div class="relative ml-auto">
@@ -33,6 +33,7 @@
                             <th>ID Pesanan</th>
                             <th>Pembeli</th>
                             <th>Jenis</th>
+                            <th>Metode Bayar</th>
                             <th>Waktu</th>
                             <th>Item</th>
                             <th>Total</th>
@@ -43,72 +44,92 @@
                     </thead>
                     <tbody>
                         @forelse ($orders as $order)
-                            <tr>
-                                <td class="whitespace-nowrap font-semibold text-matcha-900">{{ $order->code }}</td>
-                                <td>
-                                    <div class="font-medium text-stone-800">{{ $order->customer_name }}</div>
-                                    <div class="text-xs text-stone-500">{{ $order->customer_phone }}</div>
-                                    @if ($order->user)
-                                        <div class="text-[11px] text-matcha-600">Akun: {{ $order->user->email }}</div>
-                                    @else
-                                        <div class="text-[11px] text-stone-400">Tamu</div>
-                                    @endif
-                                </td>
-                                <td>
-                                    <span class="inline-flex items-center gap-1 text-xs font-semibold text-matcha-800">
-                                        <i class="bi {{ $order->delivery_type === 'ambil' ? 'bi-bag-check' : 'bi-bicycle' }}"></i>
-                                        {{ $order->delivery_type === 'ambil' ? 'Ambil sendiri' : 'Diantar' }}
-                                    </span>
-                                </td>
-                                <td class="whitespace-nowrap text-xs">{{ $order->created_at?->format('d M Y, H:i') }}</td>
-                                <td>{{ $order->item_count }} menu</td>
-                                <td class="whitespace-nowrap">Rp {{ number_format((float) $order->total_amount, 0, ',', '.') }}</td>
-                                <td><x-status-badge :status="$order->order_status" /></td>
-                                
-                                <!-- Badge Status Pembayaran Admin -->
-                                <td>
-                                    <span class="px-2.5 py-1 text-xs font-bold rounded-full 
-                                        {{ in_array($order->payment_status, ['PAID', 'settlement']) ? 'bg-emerald-100 text-emerald-800' : '' }}
-                                        {{ in_array($order->payment_status, ['PENDING', 'UNPAID', '']) ? 'bg-amber-100 text-amber-800' : '' }}
-                                        {{ in_array($order->payment_status, ['EXPIRED', 'CANCELLED', 'deny']) ? 'bg-rose-100 text-rose-800' : '' }}">
-                                        {{ $order->payment_status ?? 'UNPAID' }}
-                                    </span>
-                                </td>
+                        <tr>
+                            <td class="whitespace-nowrap font-semibold text-matcha-900">{{ $order->code }}</td>
+                            <td>
+                                <div class="font-medium text-stone-800">{{ $order->customer_name }}</div>
+                                <div class="text-xs text-stone-500">{{ $order->customer_phone }}</div>
+                                @if ($order->user)
+                                <div class="text-[11px] text-matcha-600">Akun: {{ $order->user->email }}</div>
+                                @else
+                                <div class="text-[11px] text-stone-400">Tamu</div>
+                                @endif
+                            </td>
+                            <td>
+                                <span class="inline-flex items-center gap-1 text-xs font-semibold text-matcha-800">
+                                    <i class="bi {{ $order->delivery_type === 'ambil' ? 'bi-bag-check' : 'bi-bicycle' }}"></i>
+                                    {{ $order->delivery_type === 'ambil' ? 'Ambil sendiri' : 'Diantar' }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="inline-flex items-center gap-1 text-xs font-semibold text-stone-700">
+                                    <i class="bi {{ $order->payment_method_icon }}"></i>
+                                    {{ $order->payment_method_label }}
+                                </span>
+                            </td>
+                            <td class="whitespace-nowrap text-xs">{{ $order->created_at?->format('d M Y, H:i') }}</td>
+                            <td>{{ $order->item_count }} menu</td>
+                            <td class="whitespace-nowrap">Rp {{ number_format((float) $order->total_amount, 0, ',', '.') }}</td>
+                            <td><x-status-badge :status="$order->order_status" /></td>
 
-                                <td class="whitespace-nowrap">
-                                    <form method="POST" action="{{ route('admin.orders.status', $order) }}" class="flex items-center gap-1.5">
-                                        @csrf
-                                        @method('PATCH')
-                                        <select name="status" class="input-matcha !w-auto !px-2 !py-1 text-xs">
-                                            @foreach (['PROCESSING', 'COMPLETED', 'CANCELLED'] as $statusOption)
-                                                <option value="{{ $statusOption }}" @selected($order->order_status === $statusOption)>
-                                                    {{ $statusLabels[$statusOption] }}
-                                                </option>
-                                            @endforeach
-                                        </select>
-                                        <button type="submit" class="btn-matcha !px-2.5 !py-1 text-xs">Simpan</button>
-                                    </form>
+                            <!-- Badge Status Pembayaran Admin -->
+                            <td>
+                                @php
+                                $paymentTone = match (true) {
+                                $order->payment_status === 'PAID' => 'bg-emerald-100 text-emerald-800',
+                                in_array($order->payment_status, ['EXPIRED', 'CANCELLED', 'DENIED', 'REFUNDED'], true) => 'bg-rose-100 text-rose-800',
+                                default => 'bg-amber-100 text-amber-800',
+                                };
+                                @endphp
+                                <span class="px-2.5 py-1 text-xs font-bold rounded-full {{ $paymentTone }}">
+                                    {{ $order->payment_status_label }}
+                                </span>
+                            </td>
 
-                                    <details class="mt-1">
-                                        <summary class="cursor-pointer text-xs font-semibold text-matcha-700">Detail</summary>
-                                        <ul class="mt-1 space-y-1 rounded-lg bg-matcha-50/70 p-2 text-xs text-stone-600">
-                                            @foreach ($order->items as $item)
-                                                <li class="flex justify-between gap-2">
-                                                    <span>{{ $item->quantity }}× {{ $item->product?->name ?? 'Produk dihapus' }}
-                                                        <span class="text-stone-400">({{ $item->variant?->variant_name ?? 'tanpa varian' }})</span>
-                                                    </span>
-                                                    <span class="shrink-0">Rp {{ number_format($item->subtotal, 0, ',', '.') }}</span>
-                                                </li>
-                                            @endforeach
-                                            <li class="border-t border-matcha-100 pt-1 text-stone-500">{{ $order->shipping_address }}</li>
-                                        </ul>
-                                    </details>
-                                </td>
-                            </tr>
+                            <td class="whitespace-nowrap">
+                                @if($order->isCashPayment() && $order->payment_status !== 'PAID' && $order->order_status !== 'CANCELLED')
+                                <form method="POST" action="{{ route('admin.orders.paid', $order) }}" class="mb-1">
+                                    @csrf
+                                    @method('PATCH')
+                                    <button type="submit" class="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-red-100 transition hover:bg-emerald-700">
+                                        <i class="bi bi-cash-coin mr-1"></i> Tandai Lunas
+                                    </button>
+                                </form>
+                                @endif
+
+                                <form method="POST" action="{{ route('admin.orders.status', $order) }}" class="flex items-center gap-1.5">
+                                    @csrf
+                                    @method('PATCH')
+                                    <select name="status" class="input-matcha !w-auto !px-2 !py-1 text-xs">
+                                        @foreach (['PROCESSING', 'COMPLETED', 'CANCELLED'] as $statusOption)
+                                        <option value="{{ $statusOption }}" @selected($order->order_status === $statusOption)>
+                                            {{ $statusLabels[$statusOption] }}
+                                        </option>
+                                        @endforeach
+                                    </select>
+                                    <button type="submit" class="btn-matcha !px-2.5 !py-1 text-xs">Simpan</button>
+                                </form>
+
+                                <details class="mt-1">
+                                    <summary class="cursor-pointer text-xs font-semibold text-matcha-700">Detail</summary>
+                                    <ul class="mt-1 space-y-1 rounded-lg bg-matcha-50/70 p-2 text-xs text-stone-600">
+                                        @foreach ($order->items as $item)
+                                        <li class="flex justify-between gap-2">
+                                            <span>{{ $item->quantity }}× {{ $item->product?->name ?? 'Produk dihapus' }}
+                                                <span class="text-stone-400">({{ $item->variant?->variant_name ?? 'tanpa varian' }})</span>
+                                            </span>
+                                            <span class="shrink-0">Rp {{ number_format($item->subtotal, 0, ',', '.') }}</span>
+                                        </li>
+                                        @endforeach
+                                        <li class="border-t border-matcha-100 pt-1 text-stone-500">{{ $order->shipping_address }}</li>
+                                    </ul>
+                                </details>
+                            </td>
+                        </tr>
                         @empty
-                            <tr>
-                                <td colspan="9" class="py-8 text-center text-stone-400">Tidak ada pesanan yang cocok.</td>
-                            </tr>
+                        <tr>
+                            <td colspan="10" class="py-8 text-center text-stone-400">Tidak ada pesanan yang cocok.</td>
+                        </tr>
                         @endforelse
                     </tbody>
                 </table>

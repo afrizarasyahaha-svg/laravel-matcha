@@ -27,6 +27,52 @@ class Order extends Model
         self::STATUS_CANCELLED => 'Dibatalkan',
     ];
 
+    public const PAYMENT_METHOD_CASH = 'CASH';
+
+    public const PAYMENT_METHOD_QRIS = 'QRIS';
+
+    public const PAYMENT_METHOD_BANK_TRANSFER = 'BANK_TRANSFER';
+
+    // Metode lama: pesanan sebelum fitur pilihan metode pembayaran.
+    public const PAYMENT_METHOD_MIDTRANS = 'MIDTRANS';
+
+    public const PAYMENT_METHOD_LABELS = [
+        self::PAYMENT_METHOD_CASH => 'Tunai',
+        self::PAYMENT_METHOD_QRIS => 'QRIS',
+        self::PAYMENT_METHOD_BANK_TRANSFER => 'Transfer Bank',
+        self::PAYMENT_METHOD_MIDTRANS => 'Midtrans',
+    ];
+
+    public const PAYMENT_METHOD_ICONS = [
+        self::PAYMENT_METHOD_CASH => 'bi-cash-coin',
+        self::PAYMENT_METHOD_QRIS => 'bi-qr-code',
+        self::PAYMENT_METHOD_BANK_TRANSFER => 'bi-bank',
+        self::PAYMENT_METHOD_MIDTRANS => 'bi-credit-card',
+    ];
+
+    /** Metode yang dibayar langsung di gerai (tanpa Midtrans). */
+    public const OFFLINE_PAYMENT_METHODS = [
+        self::PAYMENT_METHOD_CASH,
+    ];
+
+    /** Metode yang diproses melalui Midtrans Snap. */
+    public const ONLINE_PAYMENT_METHODS = [
+        self::PAYMENT_METHOD_QRIS,
+        self::PAYMENT_METHOD_BANK_TRANSFER,
+        self::PAYMENT_METHOD_MIDTRANS,
+    ];
+
+    public const PAYMENT_STATUS_LABELS = [
+        'PAID' => 'Lunas',
+        'PENDING' => 'Menunggu Pembayaran',
+        'UNPAID' => 'Belum Dibayar',
+        'CHALLENGE' => 'Ditinjau',
+        'EXPIRED' => 'Kedaluwarsa',
+        'CANCELLED' => 'Dibatalkan',
+        'DENIED' => 'Ditolak',
+        'REFUNDED' => 'Dikembalikan',
+    ];
+
     protected $fillable = [
         'user_id',
         'order_number',
@@ -38,6 +84,7 @@ class Order extends Model
         'discount_amount',
         'total_amount',
         'delivery_type',
+        'payment_method',
         'order_status',
         'payment_status',
         'paid_at',
@@ -79,6 +126,36 @@ class Order extends Model
     public function getStatusLabelAttribute(): string
     {
         return self::STATUS_LABELS[$this->order_status] ?? $this->order_status;
+    }
+
+    public function getPaymentMethodLabelAttribute(): string
+    {
+        return self::PAYMENT_METHOD_LABELS[$this->payment_method]
+            ?? self::PAYMENT_METHOD_LABELS[self::PAYMENT_METHOD_MIDTRANS];
+    }
+
+    public function getPaymentMethodIconAttribute(): string
+    {
+        return self::PAYMENT_METHOD_ICONS[$this->payment_method]
+            ?? self::PAYMENT_METHOD_ICONS[self::PAYMENT_METHOD_MIDTRANS];
+    }
+
+    public function getPaymentStatusLabelAttribute(): string
+    {
+        return self::PAYMENT_STATUS_LABELS[$this->payment_status]
+            ?? strtoupper((string) $this->payment_status);
+    }
+
+    /** True jika pesanan dibayar tunai langsung di gerai. */
+    public function isCashPayment(): bool
+    {
+        return $this->payment_method === self::PAYMENT_METHOD_CASH;
+    }
+
+    /** True jika pesanan memakai Midtrans (QRIS, transfer bank, atau data lama). */
+    public function usesMidtrans(): bool
+    {
+        return ! $this->isCashPayment();
     }
 
     public function getItemCountAttribute(): int

@@ -44,6 +44,7 @@
                             <div class="text-sm font-bold text-matcha-900">Pesanan {{ $order->code }}</div>
                             <div class="text-xs text-stone-500">
                                 {{ $order->created_at?->locale('id')->translatedFormat('d M Y, H:i') }}
+                                · <i class="bi {{ $order->payment_method_icon }}"></i> {{ $order->payment_method_label }}
                             </div>
                         </div>
                         <x-status-badge :status="$order->order_status" />
@@ -96,19 +97,26 @@
                     </div>
 
                     <!-- Status Pembayaran & Tombol Aksi (Sub-bab 3.2.11) -->
+                    @php
+                        $paymentTone = match (true) {
+                            $order->payment_status === 'PAID' => 'bg-emerald-100 text-emerald-800',
+                            in_array($order->payment_status, ['EXPIRED', 'CANCELLED', 'DENIED', 'REFUNDED'], true) => 'bg-rose-100 text-rose-800',
+                            default => 'bg-amber-100 text-amber-800',
+                        };
+                        $needsOnlinePayment = ! $order->isCashPayment()
+                            && in_array($order->payment_status, ['UNPAID', 'PENDING', ''], true)
+                            && ! in_array($order->order_status, ['CANCELLED', 'COMPLETED'], true);
+                    @endphp
                     <div class="flex flex-wrap items-center justify-between gap-4 mt-4 pt-3 border-t border-stone-100">
                         <div class="flex items-center space-x-2">
                             <span class="text-xs text-stone-500">Status Pembayaran:</span>
-                            <span class="px-2.5 py-1 text-xs font-bold rounded-full 
-                                {{ in_array($order->payment_status, ['PAID', 'settlement']) ? 'bg-emerald-100 text-emerald-800' : '' }}
-                                {{ in_array($order->payment_status, ['PENDING', 'UNPAID', '']) ? 'bg-amber-100 text-amber-800' : '' }}
-                                {{ in_array($order->payment_status, ['EXPIRED', 'CANCELLED', 'deny']) ? 'bg-rose-100 text-rose-800' : '' }}">
-                                {{ $order->payment_status ?? 'UNPAID' }}
+                            <span class="px-2.5 py-1 text-xs font-bold rounded-full {{ $paymentTone }}">
+                                {{ $order->payment_status_label }}
                             </span>
                         </div>
 
                         <div>
-                            @if(in_array($order->payment_status, ['UNPAID', 'PENDING', '']) && $order->order_status !== 'CANCELLED')
+                            @if($needsOnlinePayment)
                                 <a href="{{ route('payment.show', $order) }}" class="btn-matcha !text-xs !py-1.5 !px-3 no-underline inline-flex items-center">
                                     <i class="bi bi-credit-card mr-1"></i> Bayar Sekarang
                                 </a>
