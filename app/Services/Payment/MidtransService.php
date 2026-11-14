@@ -26,6 +26,10 @@ class MidtransService
     {
         $order->load(['items.product', 'payment']);
 
+        if ($order->isCashPayment()) {
+            throw new \Exception('Pesanan dengan metode tunai tidak diproses melalui Midtrans.');
+        }
+
         if ($order->payment_status === 'PAID') {
             throw new \Exception('Order sudah dibayar.');
         }
@@ -34,20 +38,44 @@ class MidtransService
             throw new \Exception('Order sudah dibatalkan.');
         }
 
-        $midtransOrderId = 'TRX-' . $order->id . '-' . time();
+        // Pakai kembali token yang masih berlaku agar midtrans_order_id tidak
+        // berubah-ubah dan transaksi lama tidak menjadi yatim.
+        $existingPayment = $order->payment;
+
+        if (
+            $existingPayment
+            && $existingPayment->snap_token
+            && $existingPayment->payment_status === 'PENDING'
+            && (! $existingPayment->expires_at || $existingPayment->expires_at->isFuture())
+        ) {
+            return [
+                'token' => $existingPayment->snap_token,
+                'redirect_url' => $existingPayment->redirect_url,
+            ];
+        }
+
+        $expiryMinutes = (int) config('services.midtrans.expiry_minutes', 15);
+
+        // ID dibuat unik per percobaan, tetapi deterministik untuk order ini.
+        $midtransOrderId = 'TRX-' . $order->id . '-' . now()->format('YmdHis');
 
         $itemDetails = [];
         $calculatedTotal = 0;
 
         foreach ($order->items as $item) {
             $itemName = $item->product->name ?? 'Produk Matcha';
+
+            if ($item->variant) {
+                $itemName .= ' - ' . $item->variant->variant_name;
+            }
+
             $itemName = mb_strimwidth($itemName, 0, 50, '');
 
             $itemPrice = (int) $item->unit_price;
             $quantity = (int) $item->quantity;
 
             $itemDetails[] = [
-                'id' => 'PROD-' . $item->product_id,
+                'id' => 'ITEM-' . $item->id,
                 'price' => $itemPrice,
                 'quantity' => $quantity,
                 'name' => $itemName,
@@ -91,12 +119,21 @@ class MidtransService
             'expiry' => [
                 'start_time' => date('Y-m-d H:i:s O'),
                 'unit' => 'minute',
-                'duration' => config(
-                    'services.midtrans.expiry_minutes',
-                    15
-                ),
+                'duration' => $expiryMinutes,
+            ],
+
+            'callbacks' => [
+                'finish' => route('payment.show', $order),
             ],
         ];
+
+        // Batasi kanal Snap sesuai metode yang dipilih pelanggan. Untuk data
+        // lama (MIDTRANS) tidak dibatasi agar perilaku lama tetap berjalan.
+        $enabledPayments = config('services.midtrans.enabled_payments.' . $order->payment_method);
+
+        if (! empty($enabledPayments)) {
+            $params['enabled_payments'] = array_values((array) $enabledPayments);
+        }
 
         $snapResponse = Snap::createTransaction($params);
 
@@ -110,15 +147,21 @@ class MidtransService
                 'redirect_url' => $snapResponse->redirect_url,
                 'transaction_status' => 'pending',
                 'payment_status' => 'PENDING',
-                'expires_at' => now()->addMinutes(
-                    config('services.midtrans.expiry_minutes', 15)
-                ),
+                'expires_at' => now()->addMinutes($expiryMinutes),
                 'raw_response' => json_decode(
                     json_encode($snapResponse),
                     true
                 ),
             ]
         );
+
+        // Sinkronkan status order dengan baris pembayaran yang baru dibuat.
+        if ($order->payment_status !== 'PAID') {
+            $order->forceFill([
+                'payment_status' => 'PENDING',
+                'expires_at' => $order->expires_at ?? now()->addMinutes($expiryMinutes),
+            ])->save();
+        }
 
         return [
             'token' => $snapResponse->token,
@@ -190,10 +233,18 @@ class MidtransService
                 break;
 
             case 'deny':
+                $orderStatus = Order::STATUS_CANCELLED;
+                $paymentStatus = 'DENIED';
+                break;
+
             case 'cancel':
+                $orderStatus = Order::STATUS_CANCELLED;
+                $paymentStatus = 'CANCELLED';
+                break;
+
             case 'expire':
                 $orderStatus = Order::STATUS_CANCELLED;
-                $paymentStatus = strtoupper($transactionStatus);
+                $paymentStatus = 'EXPIRED';
                 break;
 
             case 'refund':
@@ -366,8 +417,9 @@ class MidtransService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            // Abaikan notifikasi basi (mis. "pending" tiba setelah "settlement")
-            if ($order->payment_status === 'PAID' && $mappedStatus['payment_status'] === 'PENDING') {
+            // Abaikan notifikasi basi: order yang sudah PAID tidak boleh
+            // dikembalikan ke status non-PAID oleh notifikasi yang datang terlambat.
+            if ($order->payment_status === 'PAID' && $mappedStatus['payment_status'] !== 'PAID') {
                 return;
             }
 
@@ -377,40 +429,36 @@ class MidtransService
             // Simpan status pembayaran
             $payment->payment_status = $mappedStatus['payment_status'];
 
+            // Status order tidak boleh turun dari COMPLETED (mis. notifikasi
+            // settlement duplikat yang datang setelah admin menyelesaikan order).
+            $orderStatus = $mappedStatus['order_status'];
+
+            if (
+                $order->order_status === Order::STATUS_COMPLETED
+                && $orderStatus !== Order::STATUS_COMPLETED
+            ) {
+                $orderStatus = Order::STATUS_COMPLETED;
+            }
+
             // Simpan status order
-            $order->order_status = $mappedStatus['order_status'];
+            $order->order_status = $orderStatus;
             $order->payment_status = $mappedStatus['payment_status'];
 
             // Jika pembayaran berhasil
             if ($mappedStatus['payment_status'] === 'PAID') {
                 $payment->paid_at = $payment->paid_at ?? now();
                 $order->paid_at = $order->paid_at ?? now();
+                $order->expires_at = null;
             }
 
             // Jika pembayaran dibatalkan atau kedaluwarsa
-            if (
-                in_array($transactionStatus, [
-                    'deny',
-                    'cancel',
-                    'expire',
-                ], true)
-            ) {
-                $order->loadMissing('items.productVariant', 'items.product');
-
-                foreach ($order->items as $item) {
-                    if ($item->productVariant) {
-                        $item->productVariant->increment(
-                            'stock',
-                            $item->quantity
-                        );
-                    } elseif ($item->product) {
-                        $item->product->increment(
-                            'stock',
-                            $item->quantity
-                        );
-                    }
-                }
+            if ($mappedStatus['order_status'] === Order::STATUS_CANCELLED) {
+                $order->cancelled_at = $order->cancelled_at ?? now();
             }
+
+            // Catatan: stok tidak dikurangi saat checkout, sehingga TIDAK boleh
+            // dikembalikan di sini. Blok lama menaikkan stok produk/varian dan
+            // justru membuat stok membengkak setiap kali pembayaran gagal.
 
             // Simpan raw notification
             $payment->raw_response = $payload;

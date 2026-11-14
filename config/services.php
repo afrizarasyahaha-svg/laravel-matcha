@@ -44,6 +44,19 @@ return [
             ? 'https://app.midtrans.com/snap/snap.js' 
             : 'https://app.sandbox.midtrans.com/snap/snap.js',
         'expiry_minutes' => 15,
+        // Kanal yang ditampilkan di Snap sesuai metode pilihan pelanggan.
+        // Aktifkan kanal terkait di dashboard Midtrans sebelum dipakai.
+        'enabled_payments' => [
+            'QRIS' => ['other_qris'],
+            'BANK_TRANSFER' => [
+                'bca_va',
+                'bni_va',
+                'bri_va',
+                'permata_va',
+                'echannel',
+                'other_va',
+            ],
+        ],
     ],
 
 ];

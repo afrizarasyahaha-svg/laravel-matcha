@@ -67,11 +67,12 @@ Route::get('/riwayat-pesanan', [OrderHistoryController::class, 'index'])->name('
 */
 // Halaman Pembayaran Pelanggan
 Route::get('/payments/{order}', [PaymentController::class, 'show'])->name('payment.show');
+// Membuat token pembayaran (lewat web agar session/CSRF/otorisasi terbaca)
+Route::post('/payments/{order}/token', [PaymentController::class, 'generateToken'])->name('payment.token');
 // Polling status pembayaran (di web.php agar session/auth terbaca)
 Route::get('/payments/{order}/status', [PaymentController::class, 'status'])->name('payment.status');
-Route::get('/payments/{order}/debug', [PaymentController::class, 'debug']); // SEMENTARA
 
-// Webhook Midtrans (Tanpa auth & tanpa CSRF)
+// Webhook Midtrans (tanpa auth; CSRF dikecualikan di bootstrap/app.php)
 Route::post('/payments/midtrans/notification', [PaymentController::class, 'notification']);
 
 /*
@@ -96,6 +97,7 @@ Route::prefix('admin')
 
         Route::get('/pesanan', [AdminOrderController::class, 'index'])->name('orders.index');
         Route::patch('/pesanan/{order}/status', [AdminOrderController::class, 'updateStatus'])->name('orders.status');
+        Route::patch('/pesanan/{order}/lunas', [AdminOrderController::class, 'markPaid'])->name('orders.paid');
         Route::get('/laporan-penjualan', [ReportController::class, 'daily'])
             ->name('reports.daily');
     });

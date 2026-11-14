@@ -51,8 +51,60 @@ class OrderController extends Controller
             'status.in' => 'Status pesanan tidak valid.',
         ]);
 
-        $order->update(['order_status' => $data['status']]);
+        // Pesanan harus lunas sebelum admin boleh menyelesaikannya.
+        if ($data['status'] === Order::STATUS_COMPLETED && $order->payment_status !== 'PAID') {
+            return back()->with('error', 'Pesanan '.$order->code.' belum lunas. Tandai lunas terlebih dahulu sebelum menyelesaikan pesanan.');
+        }
+
+        $order->order_status = $data['status'];
+
+        // Laporan harian memakai completed_at, jadi penanda waktu harus ikut
+        // diperbarui saat status akhir berubah.
+        if ($data['status'] === Order::STATUS_COMPLETED) {
+            $order->completed_at = $order->completed_at ?? now();
+            $order->cancelled_at = null;
+        } elseif ($data['status'] === Order::STATUS_CANCELLED) {
+            $order->cancelled_at = $order->cancelled_at ?? now();
+            $order->completed_at = null;
+        } else {
+            $order->completed_at = null;
+            $order->cancelled_at = null;
+        }
+
+        $order->save();
 
         return back()->with('success', 'Status pesanan '.$order->code.' berhasil diperbarui menjadi '.$order->status_label.'.');
+    }
+
+    /**
+     * Menandai pesanan tunai sebagai lunas secara manual oleh admin.
+     * Pesanan tunai tidak memiliki baris pembayaran Midtrans.
+     */
+    public function markPaid(Order $order)
+    {
+        if (! $order->isCashPayment()) {
+            return back()->with('error', 'Hanya pesanan dengan metode tunai yang dapat ditandai lunas secara manual.');
+        }
+
+        if ($order->payment_status === 'PAID') {
+            return back()->with('error', 'Pesanan '.$order->code.' sudah lunas.');
+        }
+
+        if ($order->order_status === Order::STATUS_CANCELLED) {
+            return back()->with('error', 'Pesanan '.$order->code.' sudah dibatalkan dan tidak dapat ditandai lunas.');
+        }
+
+        $order->payment_status = 'PAID';
+        $order->paid_at = $order->paid_at ?? now();
+        $order->expires_at = null;
+
+        // Pembayaran tunai diterima di gerai: pesanan langsung masuk proses.
+        if ($order->order_status === Order::STATUS_PENDING) {
+            $order->order_status = Order::STATUS_PROCESSING;
+        }
+
+        $order->save();
+
+        return back()->with('success', 'Pembayaran tunai pesanan '.$order->code.' berhasil ditandai lunas.');
     }
 }

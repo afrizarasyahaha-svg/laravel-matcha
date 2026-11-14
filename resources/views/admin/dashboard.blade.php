@@ -1,7 +1,7 @@
 <x-layouts.dashboard :nav="\App\Support\Navigation::admin()" role-label="Admin"
     title="Dashboard" subtitle="Ringkasan operasional gerai hari ini">
     <div class="w-full">
-        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <x-stat-card label="Omzet hari ini" value="Rp {{ number_format($todayRevenue, 0, ',', '.') }}"
                 note="Selesai" icon="bi-cash-stack" />
             <x-stat-card label="Pesanan hari ini" :value="$todayOrders" note="Masuk" icon="bi-receipt" />
@@ -22,15 +22,31 @@
             </div>
         @endif
 
-        <div class="mt-4 grid gap-4 xl:grid-cols-3">
-            <div class="card-soft p-5 xl:col-span-2">
-                <x-section-title title="Pesanan Terbaru" desc="Lima pesanan terakhir yang masuk.">
-                    <x-slot:action>
-                        <a href="{{ route('admin.orders.index') }}" class="text-xs font-semibold text-matcha-700 no-underline hover:underline">
-                            Lihat semua <i class="bi bi-arrow-right"></i>
-                        </a>
-                    </x-slot:action>
-                </x-section-title>
+        <div class="card-soft mt-4 p-5">
+            <x-section-title title="Pintasan" desc="Menuju halaman yang paling sering dipakai." />
+            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                @foreach ([
+                    ['route' => 'admin.orders.index', 'icon' => 'bi-receipt', 'label' => 'Lihat pesanan masuk'],
+                    ['route' => 'admin.products.index', 'icon' => 'bi-box-seam', 'label' => 'Kelola produk & menu'],
+                    ['route' => 'admin.stock.index', 'icon' => 'bi-exclamation-triangle', 'label' => 'Cek stok menipis'],
+                ] as $shortcut)
+                    <a href="{{ route($shortcut['route']) }}"
+                        class="flex items-center gap-3 rounded-xl border border-matcha-100 bg-matcha-50/60 p-3 text-sm font-semibold text-matcha-900 no-underline transition hover:border-matcha-400 hover:bg-white">
+                        <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-matcha-700 text-white"><i class="bi {{ $shortcut['icon'] }}"></i></span>
+                        {{ $shortcut['label'] }}
+                    </a>
+                @endforeach
+            </div>
+        </div>
+
+        <div class="card-soft mt-4 p-5">
+            <x-section-title title="Pesanan Terbaru" desc="Lima pesanan terakhir yang masuk.">
+                <x-slot:action>
+                    <a href="{{ route('admin.orders.index') }}" class="text-xs font-semibold text-matcha-700 no-underline hover:underline">
+                        Lihat semua <i class="bi bi-arrow-right"></i>
+                    </a>
+                </x-slot:action>
+            </x-section-title>
 
                 <div class="overflow-x-auto">
                     <table class="table-matcha">
@@ -54,9 +70,9 @@
                                     <td><x-status-badge :status="$order->order_status" /></td>
                                     <td>
                                         <span class="px-2.5 py-1 text-xs font-bold rounded-full 
-                                            {{ in_array($order->payment_status, ['PAID', 'settlement']) ? 'bg-emerald-100 text-emerald-800' : '' }}
+                                            {{ in_array($order->payment_status, ['PAID', 'settlement', 'SETTLEMENT']) ? 'bg-emerald-100 text-emerald-800' : '' }}
                                             {{ in_array($order->payment_status, ['PENDING', 'UNPAID', '']) ? 'bg-amber-100 text-amber-800' : '' }}
-                                            {{ in_array($order->payment_status, ['EXPIRED', 'CANCELLED', 'deny']) ? 'bg-rose-100 text-rose-800' : '' }}">
+                                            {{ in_array($order->payment_status, ['EXPIRED', 'CANCELLED', 'CANCEL', 'DENIED', 'deny']) ? 'bg-rose-100 text-rose-800' : '' }}">
                                             {{ $order->payment_status ?? 'UNPAID' }}
                                         </span>
                                     </td>

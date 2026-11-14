@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\Order;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
@@ -25,6 +26,7 @@ class OrderFactory extends Factory
             'discount_amount' => 0,
             'total_amount' => $subtotal + $shippingFee,
             'delivery_type' => $deliveryType,
+            'payment_method' => Order::PAYMENT_METHOD_BANK_TRANSFER,
             'order_status' => 'PROCESSING',
             'payment_status' => 'UNPAID',
             'notes' => $this->faker->optional()->sentence(),

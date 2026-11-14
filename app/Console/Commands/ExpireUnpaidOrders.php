@@ -9,26 +9,53 @@ use Illuminate\Support\Facades\DB;
 class ExpireUnpaidOrders extends Command
 {
     protected $signature = 'orders:expire-unpaid';
+
     protected $description = 'Membatalkan pesanan yang belum dibayar hingga melewati batas waktu kedaluwarsa';
 
-    public function handle()
+    public function handle(): int
     {
-        // Cari pesanan yang masih PENDING_PAYMENT dan waktu expires_at sudah lewat
-        $expiredOrders = Order::where('order_status', 'PENDING') // atau status pending payment
-            ->whereHas('payment', function($query) {
-                $query->where('payment_status', 'PENDING')
-                      ->where('expires_at', '<', now());
+        $expiredOrders = Order::query()
+            ->where('order_status', Order::STATUS_PENDING)
+            // Pesanan tunai tidak memiliki batas waktu pembayaran online.
+            ->where(function ($query) {
+                $query->whereNull('payment_method')
+                    ->orWhere('payment_method', '!=', Order::PAYMENT_METHOD_CASH);
+            })
+            ->where(function ($query) {
+                // Batas waktu utama ada di orders.expires_at.
+                $query->where(function ($sub) {
+                    $sub->whereNotNull('expires_at')
+                        ->where('expires_at', '<', now());
+                })
+                // Fallback: data lama yang hanya punya expires_at di payments.
+                ->orWhereHas('payment', function ($sub) {
+                    $sub->where('payment_status', 'PENDING')
+                        ->whereNotNull('expires_at')
+                        ->where('expires_at', '<', now());
+                });
             })
             ->get();
 
         if ($expiredOrders->isEmpty()) {
             $this->info('Tidak ada pesanan kedaluwarsa.');
-            return;
+
+            return self::SUCCESS;
         }
 
-        foreach ($expiredOrders as $order) {
-            DB::transaction(function () use ($order) {
+        foreach ($expiredOrders as $expiredOrder) {
+            $cancelled = DB::transaction(function () use ($expiredOrder) {
+                $order = Order::whereKey($expiredOrder->id)
+                    ->lockForUpdate()
+                    ->first();
+
+                // Bisa saja sudah dibayar/dibatalkan sebelum lock didapat.
+                if (! $order || $order->order_status !== Order::STATUS_PENDING || $order->isCashPayment()) {
+                    return false;
+                }
+
                 $order->order_status = Order::STATUS_CANCELLED;
+                $order->payment_status = 'EXPIRED';
+                $order->cancelled_at = $order->cancelled_at ?? now();
                 $order->save();
 
                 if ($order->payment) {
@@ -37,17 +64,17 @@ class ExpireUnpaidOrders extends Command
                     $order->payment->save();
                 }
 
-                // Kembalikan stok produk
-                foreach ($order->items as $item) {
-                    if ($item->productVariant) {
-                        $item->productVariant->increment('stock', $item->quantity);
-                    } elseif ($item->product) {
-                        $item->product->increment('stock', $item->quantity);
-                    }
-                }
+                // Stok tidak dikurangi saat checkout, jadi tidak ada yang perlu
+                // dikembalikan di sini.
+
+                return true;
             });
 
-            $this->info("Pesanan #{$order->id} berhasil dibatalkan karena kedaluwarsa.");
+            if ($cancelled) {
+                $this->info("Pesanan #{$expiredOrder->id} dibatalkan karena kedaluwarsa.");
+            }
         }
+
+        return self::SUCCESS;
     }
 }

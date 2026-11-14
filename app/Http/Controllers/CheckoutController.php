@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\Order;
 use App\Models\Product;
 use App\Services\CartService;
+use App\Services\Payment\MidtransService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -38,10 +40,17 @@ class CheckoutController extends Controller
             'type' => ['required', 'in:antar,ambil'],
             'address' => ['required_if:type,antar', 'nullable', 'string', 'max:500'],
             'pickup' => ['nullable', 'string', 'max:100'],
+            'payment_method' => ['required', 'in:'.implode(',', [
+                Order::PAYMENT_METHOD_CASH,
+                Order::PAYMENT_METHOD_QRIS,
+                Order::PAYMENT_METHOD_BANK_TRANSFER,
+            ])],
         ], [
             'name.required' => 'Nama penerima wajib diisi.',
             'phone.required' => 'Nomor telepon wajib diisi.',
             'address.required_if' => 'Alamat wajib diisi untuk pesanan diantar.',
+            'payment_method.required' => 'Metode pembayaran wajib dipilih.',
+            'payment_method.in' => 'Metode pembayaran tidak valid.',
         ]);
 
         $rows = $cart->rows();
@@ -59,7 +68,7 @@ class CheckoutController extends Controller
 
             if (! $product || ! $product->is_active) {
                 throw ValidationException::withMessages([
-                    'cart' => 'Produk "'.$row['name'].'" sudah tidak tersedia.',
+                    'cart' => 'Produk "' . $row['name'] . '" sudah tidak tersedia.',
                 ]);
             }
 
@@ -70,7 +79,7 @@ class CheckoutController extends Controller
 
                 if (! $variant) {
                     throw ValidationException::withMessages([
-                        'cart' => 'Varian untuk produk "'.$product->name.'" tidak ditemukan.',
+                        'cart' => 'Varian untuk produk "' . $product->name . '" tidak ditemukan.',
                     ]);
                 }
             }
@@ -95,11 +104,13 @@ class CheckoutController extends Controller
 
         $shippingAddress = $data['type'] === 'antar'
             ? $data['address']
-            : 'Ambil di tempat (Dine-in/Takeaway)'.(! empty($data['pickup']) ? ' · Ambil: '.$data['pickup'] : '');
+            : 'Ambil di tempat (Dine-in/Takeaway)' . (! empty($data['pickup']) ? ' · Ambil: ' . $data['pickup'] : '');
 
-        $order = DB::transaction(function () use ($request, $data, $itemsData, $shippingFee, $subtotal, $totalAmount, $shippingAddress) {
+        $isCash = $data['payment_method'] === Order::PAYMENT_METHOD_CASH;
+
+        $order = DB::transaction(function () use ($request, $data, $itemsData, $shippingFee, $subtotal, $totalAmount, $shippingAddress, $isCash) {
             // Generate order number unik, misal: MATCHA-YYYYMMDD-XXXX
-            $orderNumber = 'MATCHA-'.date('Ymd').'-'.strtoupper(Str::random(5));
+            $orderNumber = 'MATCHA-' . date('Ymd') . '-' . strtoupper(Str::random(5));
 
             $order = Order::create([
                 'user_id' => $request->user()?->id,
@@ -112,8 +123,11 @@ class CheckoutController extends Controller
                 'discount_amount' => 0,
                 'total_amount' => $totalAmount,
                 'delivery_type' => $data['type'], // 'antar' atau 'ambil'
-                'order_status' => Order::STATUS_PROCESSING,
+                'payment_method' => $data['payment_method'],
+                // Tunai langsung diproses di gerai; QRIS/transfer menunggu pembayaran.
+                'order_status' => $isCash ? Order::STATUS_PROCESSING : Order::STATUS_PENDING,
                 'payment_status' => 'UNPAID',
+                'expires_at' => $isCash ? null : now()->addMinutes(config('services.midtrans.expiry_minutes', 15)),
             ]);
 
             $order->items()->createMany($itemsData);
@@ -131,8 +145,31 @@ class CheckoutController extends Controller
         $cart->clear();
         session()->flash('new_order_id', $order->id);
 
+        // Pesanan tunai tidak memakai Midtrans: tidak ada token maupun baris
+        // pembayaran. Admin menandai lunas setelah uang diterima.
+        if ($isCash) {
+            return redirect()
+                ->route('payment.show', $order)
+                ->with('success', 'Pesanan berhasil dibuat. Silakan bayar tunai saat pesanan diambil/diterima.');
+        }
+
+        // Buat transaksi Snap Midtrans. Jika gagal (mis. jaringan/konfigurasi),
+        // pesanan tetap tersimpan dan pengguna bisa mencoba lagi dari halaman pembayaran.
+        try {
+            app(MidtransService::class)->createSnapTransaction($order);
+        } catch (\Throwable $e) {
+            Log::warning('Gagal membuat transaksi Midtrans saat checkout', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return redirect()
+                ->route('payment.show', $order)
+                ->with('error', 'Pesanan berhasil dibuat, tetapi token pembayaran gagal dibuat. Silakan klik "Buat Pembayaran" untuk mencoba lagi.');
+        }
+
         return redirect()
-            ->route('orders.history')
-            ->with('success', 'Pesanan berhasil dibuat. Silakan tunggu konfirmasi dari gerai.');
+            ->route('payment.show', $order)
+            ->with('success', 'Pesanan berhasil dibuat. Silakan selesaikan pembayaran.');
     }
 }
