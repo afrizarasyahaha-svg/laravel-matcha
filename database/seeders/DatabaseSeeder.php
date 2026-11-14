@@ -4,20 +4,23 @@ namespace Database\Seeders;
 
 use App\Models\LowStockAlert;
 use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\Payment;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class DatabaseSeeder extends Seeder
 {
     /**
-     * Seed data mengikuti prisma/seed.js dari backend lama.
-     * Tabel yang di luar cakupan (payment, expense, notifikasi) tidak diisi.
+     * Seed data mengikuti skema baru Matcha API.
      */
     public function run(): void
     {
         DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        DB::table('payments')->truncate();
         DB::table('order_items')->truncate();
         DB::table('orders')->truncate();
         DB::table('low_stock_alerts')->truncate();
@@ -28,11 +31,11 @@ class DatabaseSeeder extends Seeder
 
         // 1. Users
         $users = collect([
-            ['name' => 'Admin Matcha', 'email' => 'admin@matcha.com', 'password' => 'admin123', 'role' => 'ADMIN'],
-            ['name' => 'Achmad Fauzan', 'email' => 'fauzan@gmail.com', 'password' => 'password123', 'role' => 'CUSTOMER'],
-            ['name' => 'Vanka Rahma', 'email' => 'vanka@gmail.com', 'password' => 'password123', 'role' => 'CUSTOMER'],
-            ['name' => 'Muhammad Arfian', 'email' => 'arfian@gmail.com', 'password' => 'password123', 'role' => 'CUSTOMER'],
-            ['name' => 'Siti Aminah', 'email' => 'siti@gmail.com', 'password' => 'password123', 'role' => 'CUSTOMER'],
+            ['name' => 'Admin Matcha', 'email' => 'admin@matcha.com', 'password' => bcrypt('admin123'), 'role' => 'ADMIN'],
+            ['name' => 'Achmad Fauzan', 'email' => 'fauzan@gmail.com', 'password' => bcrypt('password123'), 'role' => 'CUSTOMER'],
+            ['name' => 'Vanka Rahma', 'email' => 'vanka@gmail.com', 'password' => bcrypt('password123'), 'role' => 'CUSTOMER'],
+            ['name' => 'Muhammad Arfian', 'email' => 'arfian@gmail.com', 'password' => bcrypt('password123'), 'role' => 'CUSTOMER'],
+            ['name' => 'Siti Aminah', 'email' => 'siti@gmail.com', 'password' => bcrypt('password123'), 'role' => 'CUSTOMER'],
         ])->map(fn (array $data) => User::create($data));
 
         // 2. Products + variants + low stock alert
@@ -121,7 +124,7 @@ class DatabaseSeeder extends Seeder
             return $product->load('variants');
         });
 
-        // 3. Orders dummy (tanpa Payment, karena Midtrans di luar cakupan)
+        // 3. Orders dummy dengan skema baru & Payment dummy
         $customers = $users->where('role', 'CUSTOMER')->values();
 
         for ($i = 0; $i < 5; $i++) {
@@ -131,24 +134,57 @@ class DatabaseSeeder extends Seeder
 
             $unitPrice = (float) $product->base_price + (float) $variant->additional_price;
             $quantity = 2;
-            $shippingFee = 10000;
-            $totalAmount = ($unitPrice * $quantity) + $shippingFee;
+            $subtotal = $unitPrice * $quantity;
+            $shippingFee = ($i % 2 === 0) ? 10000 : 0; // Kombinasi antar / ambil
+            $deliveryType = ($shippingFee > 0) ? 'antar' : 'ambil';
+            $totalAmount = $subtotal + $shippingFee;
+
+            $isCompleted = ($i === 4);
+            $orderStatus = $isCompleted ? Order::STATUS_COMPLETED : Order::STATUS_PROCESSING;
+            $paymentStatus = $isCompleted ? 'PAID' : 'UNPAID';
 
             $order = Order::create([
                 'user_id' => $customer->id,
+                'order_number' => 'MATCHA-' . date('Ymd') . '-' . strtoupper(Str::random(5)),
                 'customer_name' => $customer->name,
-                'customer_phone' => '08123456789'.$i,
-                'shipping_address' => 'Jl. Melati No. '.($i + 1).', Malang, Jawa Timur',
+                'customer_phone' => '08123456789' . $i,
+                'shipping_address' => $deliveryType === 'antar' ? 'Jl. Melati No. ' . ($i + 1) . ', Malang, Jawa Timur' : 'Ambil di tempat (Dine-in)',
                 'shipping_fee' => $shippingFee,
+                'subtotal' => (int) $subtotal,
+                'discount_amount' => 0,
                 'total_amount' => $totalAmount,
-                'order_status' => $i === 4 ? 'COMPLETED' : 'PROCESSING',
+                'delivery_type' => $deliveryType,
+                'order_status' => $orderStatus,
+                'payment_status' => $paymentStatus,
+                'paid_at' => $isCompleted ? now() : null,
+                'completed_at' => $isCompleted ? now() : null,
+                'notes' => 'Catatan pesanan ke-' . ($i + 1),
             ]);
 
-            $order->items()->create([
+            OrderItem::create([
+                'order_id' => $order->id,
                 'product_id' => $product->id,
                 'product_variant_id' => $variant->id,
                 'quantity' => $quantity,
+                'sweetness' => '50%',
+                'note' => 'Less ice',
                 'unit_price' => $unitPrice,
+            ]);
+
+            // Buat Payment dummy untuk setiap order
+            Payment::create([
+                'order_id' => $order->id,
+                'provider' => 'midtrans',
+                'midtrans_order_id' => 'MID-' . strtoupper(Str::random(8)),
+                'transaction_id' => $isCompleted ? 'TRX-' . rand(100000, 999999) : null,
+                'transaction_status' => $isCompleted ? 'settlement' : 'pending',
+                'fraud_status' => $isCompleted ? 'accept' : null,
+                'payment_type' => 'gopay',
+                'gross_amount' => $totalAmount,
+                'snap_token' => 'dummy_snap_token_' . Str::random(10),
+                'redirect_url' => 'https://app.sandbox.midtrans.com/snap/v2/vtweb/dummy',
+                'raw_response' => json_encode(['status_message' => 'Simulated midtrans response', 'status' => $paymentStatus]),
+                'paid_at' => $isCompleted ? now() : null,
             ]);
         }
     }
