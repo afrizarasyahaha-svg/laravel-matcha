@@ -40,7 +40,8 @@
                                 <th>Pembeli</th>
                                 <th>Item</th>
                                 <th>Total</th>
-                                <th>Status</th>
+                                <th>Status Pesanan</th>
+                                <th>Pembayaran</th> <!-- Kolom Baru -->
                             </tr>
                         </thead>
                         <tbody>
@@ -48,13 +49,21 @@
                                 <tr>
                                     <td class="whitespace-nowrap font-semibold text-matcha-900">{{ $order->code }}</td>
                                     <td>{{ $order->customer_name }}</td>
-                                    <td>{{ $order->items_count }} menu</td>
+                                    <td>{{ $order->items_count ?? $order->item_count }} menu</td>
                                     <td class="whitespace-nowrap">Rp {{ number_format((float) $order->total_amount, 0, ',', '.') }}</td>
                                     <td><x-status-badge :status="$order->order_status" /></td>
+                                    <td>
+                                        <span class="px-2.5 py-1 text-xs font-bold rounded-full 
+                                            {{ in_array($order->payment_status, ['PAID', 'settlement']) ? 'bg-emerald-100 text-emerald-800' : '' }}
+                                            {{ in_array($order->payment_status, ['PENDING', 'UNPAID', '']) ? 'bg-amber-100 text-amber-800' : '' }}
+                                            {{ in_array($order->payment_status, ['EXPIRED', 'CANCELLED', 'deny']) ? 'bg-rose-100 text-rose-800' : '' }}">
+                                            {{ $order->payment_status ?? 'UNPAID' }}
+                                        </span>
+                                    </td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="5" class="py-8 text-center text-stone-400">Belum ada pesanan.</td>
+                                    <td colspan="6" class="py-8 text-center text-stone-400">Belum ada pesanan.</td>
                                 </tr>
                             @endforelse
                         </tbody>
