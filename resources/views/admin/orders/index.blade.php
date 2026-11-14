@@ -1,18 +1,18 @@
 <x-layouts.dashboard :nav="\App\Support\Navigation::admin()" role-label="Admin"
     title="Daftar Pesanan" subtitle="Perbarui status pesanan agar pembeli mendapat informasi terbaru">
     <div class="w-full">
-        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
             <x-stat-card label="Total pesanan" :value="$stats['total']" icon="bi-receipt" />
-            <x-stat-card label="Diproses" :value="$stats['processing']" note="Perlu aksi" tone="warn" icon="bi-hourglass-split" />
+            <x-stat-card label="Perlu diproses" :value="$stats['processing']" note="Segera" tone="warn" icon="bi-hourglass-split" />
             <x-stat-card label="Selesai" :value="$stats['completed']" icon="bi-check2-circle" />
             <x-stat-card label="Dibatalkan" :value="$stats['cancelled']" tone="muted" icon="bi-x-circle" />
         </div>
 
-        <div class="card-soft mt-4 p-5">
+        <div class="card-soft p-5">
             <x-section-title title="Pesanan Masuk" desc="Perbarui status pesanan agar pembeli mendapat informasi terbaru." />
 
             <form method="GET" action="{{ route('admin.orders.index') }}" class="mb-3 flex flex-wrap items-center gap-3">
-                <select name="status" class="input-matcha !w-auto !py-1.5 text-sm">
+                <select name="status" class="select-matcha" onchange="this.form.submit()">
                     <option value="">Semua status</option>
                     @foreach ($statusLabels as $value => $label)
                     <option value="{{ $value }}" @selected($status===$value)>{{ $label }}</option>
@@ -20,8 +20,8 @@
                 </select>
                 <div class="relative ml-auto">
                     <i class="bi bi-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-stone-400"></i>
-                    <input name="q" value="{{ $q }}" placeholder="Cari nama / telepon / ID..."
-                        class="w-56 rounded-xl border border-matcha-200 bg-white py-1.5 pl-8 pr-3 text-sm outline-none transition focus:border-matcha-500">
+                    <input name="q" value="{{ $q }}" placeholder="Cari pesanan..."
+                        class="w-52 rounded-lg border border-matcha-200 bg-white py-1.5 pl-8 pr-3 text-sm outline-none focus:border-matcha-500">
                 </div>
                 <button type="submit" class="btn-matcha !py-1.5 text-xs">Terapkan</button>
             </form>
@@ -135,5 +135,52 @@
                 </table>
             </div>
         </div>
+
+        {{-- Modal detail per pesanan --}}
+        @foreach ($orders as $order)
+            <dialog id="order-{{ $order->id }}" class="modal-matcha">
+                <div class="flex items-center justify-between">
+                    <h5 class="text-base font-bold text-matcha-900">Pesanan {{ $order->code }}</h5>
+                    <button type="button" aria-label="Tutup" data-close-dialog class="rounded-lg p-1 text-stone-500 hover:bg-matcha-50"><i class="bi bi-x-lg"></i></button>
+                </div>
+
+                <div class="mt-3 text-sm">
+                    <dl class="mb-4 space-y-1.5">
+                        <div class="flex justify-between"><dt class="text-stone-500">Pembeli</dt><dd>{{ $order->customer_name }} · {{ $order->customer_phone }}</dd></div>
+                        <div class="flex justify-between"><dt class="text-stone-500">Jenis</dt><dd>{{ $order->delivery_type === 'ambil' ? 'Ambil sendiri' : 'Diantar' }}</dd></div>
+                        <div class="flex justify-between"><dt class="text-stone-500">Status</dt><dd><x-status-badge :status="$order->order_status" /></dd></div>
+                        <div class="flex justify-between"><dt class="text-stone-500">Waktu</dt><dd>{{ $order->created_at?->format('d M Y, H:i') }}</dd></div>
+                        <div class="flex justify-between"><dt class="text-stone-500">Item</dt><dd>{{ $order->item_count }} menu</dd></div>
+                        <div class="flex justify-between"><dt class="text-stone-500">Total</dt><dd class="font-bold">Rp {{ number_format((float) $order->total_amount, 0, ',', '.') }}</dd></div>
+                        <div class="flex justify-between gap-4"><dt class="shrink-0 text-stone-500">Alamat</dt><dd class="text-right">{{ $order->shipping_address }}</dd></div>
+                    </dl>
+
+                    <ul class="mb-4 space-y-1 rounded-xl bg-matcha-50/70 p-3 text-xs text-stone-600">
+                        @foreach ($order->items as $item)
+                            <li class="flex justify-between gap-2">
+                                <span>{{ $item->quantity }}× {{ $item->product?->name ?? 'Produk dihapus' }}
+                                    <span class="text-stone-400">({{ $item->variant?->variant_name ?? 'tanpa varian' }})</span></span>
+                                <span class="shrink-0">Rp {{ number_format($item->subtotal, 0, ',', '.') }}</span>
+                            </li>
+                        @endforeach
+                    </ul>
+
+                    <form method="POST" action="{{ route('admin.orders.status', $order) }}">
+                        @csrf
+                        @method('PATCH')
+                        <label class="label-matcha !text-xs" for="status-{{ $order->id }}">Ubah status</label>
+                        <select id="status-{{ $order->id }}" name="status" class="input-matcha">
+                            @foreach (['PROCESSING', 'COMPLETED', 'CANCELLED'] as $statusOption)
+                                <option value="{{ $statusOption }}" @selected($order->order_status === $statusOption)>{{ $statusLabels[$statusOption] }}</option>
+                            @endforeach
+                        </select>
+                        <div class="mt-4 flex justify-end gap-2">
+                            <button type="button" class="btn-outline-matcha" data-close-dialog>Tutup</button>
+                            <button type="submit" class="btn-matcha">Simpan Status</button>
+                        </div>
+                    </form>
+                </div>
+            </dialog>
+        @endforeach
     </div>
 </x-layouts.dashboard>

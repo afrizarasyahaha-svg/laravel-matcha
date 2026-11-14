@@ -1,3 +1,8 @@
+@php
+    $tagOf = fn ($p) => $p->getAttributes()['tag'] ?? $p->tag;
+    $tags = $products->map($tagOf)->filter()->unique()->sort()->values();
+@endphp
+
 <x-layouts.dashboard :nav="\App\Support\Navigation::admin()" role-label="Admin"
     title="Produk & Menu" subtitle="Kelola katalog, harga, varian, dan stok">
     <div class="w-full">
@@ -10,10 +15,20 @@
                 </x-slot:action>
             </x-section-title>
 
-            <div class="mb-4 grid gap-3 sm:grid-cols-3">
-                <x-stat-card label="Total produk" :value="$stats['total']" note="Menu" tone="muted" />
+            <div class="mb-4 grid gap-4 md:grid-cols-3">
+                <x-stat-card label="Total produk" :value="$stats['total']" :note="$tags->count().' kategori'" tone="muted" />
                 <x-stat-card label="Produk aktif" :value="$stats['active']" :note="round(($stats['active'] / max($stats['total'], 1)) * 100).'%'" />
                 <x-stat-card label="Stok perlu perhatian" :value="$stats['attention']" note="Perhatian" tone="warn" icon="bi-exclamation" />
+            </div>
+
+            <div class="mb-3 flex items-center gap-3">
+                <span class="text-xs text-stone-500">Filter kategori</span>
+                <select id="filter-kategori" class="select-matcha">
+                    <option value="">Semua kategori</option>
+                    @foreach ($tags as $kategori)
+                        <option value="{{ $kategori }}">{{ $kategori }}</option>
+                    @endforeach
+                </select>
             </div>
 
             <div class="overflow-x-auto">
@@ -21,6 +36,7 @@
                     <thead>
                         <tr>
                             <th>Produk</th>
+                            <th>Kategori</th>
                             <th>Harga mulai</th>
                             <th>Varian</th>
                             <th>Total stok</th>
@@ -35,11 +51,12 @@
                                 $totalStock = $product->total_stock;
                                 $stockStatus = $totalStock <= 0 ? 'Habis' : ($threshold > 0 && $product->variants->contains(fn ($variant) => $variant->stock < $threshold) ? 'Menipis' : 'Aman');
                             @endphp
-                            <tr>
+                            <tr data-kategori="{{ $tagOf($product) }}">
                                 <td>
                                     <div class="font-semibold text-matcha-900">{{ $product->name }}</div>
                                     <div class="max-w-xs truncate text-xs text-stone-500">{{ $product->description }}</div>
                                 </td>
+                                <td>{{ $tagOf($product) }}</td>
                                 <td class="whitespace-nowrap">Rp {{ number_format((float) $product->base_price, 0, ',', '.') }}</td>
                                 <td>
                                     <details>
@@ -64,7 +81,7 @@
                                 <td class="whitespace-nowrap">
                                     <a href="{{ route('admin.products.edit', $product) }}" class="text-xs font-semibold text-matcha-700 hover:underline">Edit</a>
                                     <form method="POST" action="{{ route('admin.products.destroy', $product) }}" class="inline"
-                                        onsubmit="return confirm('Hapus produk ini? Tindakan ini tidak bisa dibatalkan.')">
+                                        data-confirm="Hapus produk ini? Tindakan ini tidak bisa dibatalkan.">
                                         @csrf
                                         @method('DELETE')
                                         <button type="submit" class="ml-2 text-xs font-semibold text-red-600 hover:underline">Hapus</button>
@@ -73,7 +90,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="6" class="py-8 text-center text-stone-400">Belum ada produk. Tambahkan produk pertama.</td>
+                                <td colspan="7" class="py-8 text-center text-stone-400">Belum ada produk. Tambahkan produk pertama.</td>
                             </tr>
                         @endforelse
                     </tbody>

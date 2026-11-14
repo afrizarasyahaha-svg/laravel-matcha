@@ -76,7 +76,7 @@
                         <input type="hidden" name="is_active" value="0">
                         <input type="checkbox" name="is_active" value="1"
                             @checked(old('is_active', $isEdit ? $product->is_active : true))
-                            class="h-4 w-4 rounded border-matcha-300 text-matcha-700 focus:ring-matcha-400">
+                            class="h-4 w-4 rounded accent-matcha-700">
                         Produk aktif dan tampil di katalog
                     </label>
                 </div>

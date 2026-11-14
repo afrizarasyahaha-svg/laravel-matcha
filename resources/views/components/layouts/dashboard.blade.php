@@ -1,7 +1,6 @@
 @props(['nav' => [], 'roleLabel' => 'Konsumen', 'title' => '', 'subtitle' => '', 'showCart' => false])
 
 @php
-    $cartCount = $showCart ? app(\App\Services\CartService::class)->count() : 0;
     $initial = strtoupper(mb_substr(auth()->user()?->name ?? 'U', 0, 1));
 @endphp
 
@@ -24,90 +23,42 @@
     <div class="min-h-screen lg:flex">
         {{-- Sidebar desktop --}}
         <aside class="sticky top-0 hidden h-screen w-64 shrink-0 border-r border-matcha-100 bg-matcha-100/40 lg:block">
-            <div class="flex h-full flex-col">
-                <div class="px-5 pb-4 pt-5">
-                    <x-logo />
-                </div>
-
-                <nav class="flex-1 space-y-1 overflow-y-auto px-3 pb-4">
-                    @foreach ($nav as $item)
-                        @php($active = request()->routeIs($item['active'] ?? ''))
-                        <a href="{{ $item['url'] }}"
-                            class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium no-underline transition {{ $active ? 'bg-matcha-700 text-white shadow-sm' : 'text-stone-600 hover:bg-matcha-100' }}">
-                            <i class="bi {{ $item['icon'] }}"></i>
-                            {{ $item['label'] }}
-                        </a>
-                    @endforeach
-                </nav>
-
-                @auth
-                    <div class="m-3 flex items-center gap-3 rounded-xl bg-matcha-100/70 p-3">
-                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-matcha-700 text-sm font-bold text-white">{{ $initial }}</div>
-                        <div class="min-w-0 flex-1 leading-tight">
-                            <div class="truncate text-sm font-semibold text-matcha-900">{{ auth()->user()->name }}</div>
-                            <div class="truncate text-xs text-stone-500">{{ $roleLabel }}</div>
-                        </div>
-                        <form method="POST" action="{{ route('logout') }}">
-                            @csrf
-                            <button type="submit" title="Keluar" class="rounded-lg p-1.5 text-stone-500 transition hover:bg-white hover:text-matcha-700">
-                                <i class="bi bi-box-arrow-right"></i>
-                            </button>
-                        </form>
-                    </div>
-                @else
-                    <div class="m-3 rounded-xl bg-matcha-100/70 p-3">
-                        <div class="text-sm font-semibold text-matcha-900">Belum masuk</div>
-                        <p class="mt-0.5 text-xs text-stone-500">Masuk agar riwayat pesanan tersimpan di akunmu.</p>
-                        <div class="mt-2 flex gap-2">
-                            <a href="{{ route('login') }}" class="btn-matcha flex-1 !py-1.5 text-xs no-underline">Masuk</a>
-                            <a href="{{ route('register') }}" class="btn-outline-matcha flex-1 !py-1.5 text-xs no-underline">Daftar</a>
-                        </div>
-                    </div>
-                @endauth
-            </div>
+            <x-sidebar :nav="$nav" :role-label="$roleLabel" />
         </aside>
 
+        {{-- Sidebar mobile (drawer) --}}
+        <div id="drawer" class="fixed inset-0 z-40 hidden lg:hidden">
+            <div class="absolute inset-0 bg-black/40" data-drawer-close></div>
+            <aside class="absolute left-0 top-0 h-full w-64 bg-matcha-50 shadow-xl">
+                <x-sidebar :nav="$nav" :role-label="$roleLabel" />
+            </aside>
+        </div>
+
         <div class="min-w-0 flex-1">
-            <header class="sticky top-0 z-30 border-b border-matcha-100 bg-matcha-50/90 px-4 py-3 backdrop-blur sm:px-8">
-                <div class="flex items-center gap-3">
-                    <div class="min-w-0 flex-1">
-                        <h1 class="truncate text-lg font-bold leading-tight text-matcha-900">{{ $title }}</h1>
-                        <p class="truncate text-xs text-stone-500">{{ $subtitle }}</p>
-                    </div>
-
-                    @if ($showCart)
-                        <a href="{{ route('cart.index') }}" class="relative flex h-9 w-9 items-center justify-center rounded-xl border border-matcha-200 bg-white text-matcha-700 no-underline transition hover:border-matcha-500" aria-label="Keranjang">
-                            <i class="bi bi-bag"></i>
-                            @if ($cartCount > 0)
-                                <span class="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-matcha-700 px-1 text-[10px] font-bold text-white">{{ $cartCount }}</span>
-                            @endif
-                        </a>
-                    @endif
-
-                    @auth
-                        <div class="flex items-center gap-2">
-                            <div class="flex h-8 w-8 items-center justify-center rounded-full bg-matcha-200 text-sm font-bold text-matcha-800">{{ $initial }}</div>
-                            <span class="hidden text-sm font-semibold text-matcha-900 sm:inline">
-                                {{ auth()->user()->isAdmin() ? 'Admin' : explode(' ', auth()->user()->name)[0] }}
-                            </span>
-                        </div>
-                    @else
-                        <a href="{{ route('login') }}" class="btn-matcha !py-1.5 text-xs no-underline">
-                            <i class="bi bi-box-arrow-in-right"></i> Masuk
-                        </a>
-                    @endauth
+            <header class="sticky top-0 z-30 flex items-center gap-3 border-b border-matcha-100 bg-matcha-50/90 px-4 py-3 backdrop-blur sm:px-8">
+                <button type="button" class="rounded-lg p-2 text-matcha-800 hover:bg-matcha-100 lg:hidden" data-drawer-open aria-label="Buka menu">
+                    <i class="bi bi-list text-xl"></i>
+                </button>
+                <div class="min-w-0 flex-1">
+                    <h1 class="truncate text-lg font-bold leading-tight text-matcha-900">{{ $title }}</h1>
+                    <p class="truncate text-xs text-stone-500">{{ $subtitle }}</p>
                 </div>
-
-                {{-- Navigasi mobile --}}
-                <nav class="-mx-1 mt-2 flex gap-1 overflow-x-auto pb-0.5 lg:hidden">
-                    @foreach ($nav as $item)
-                        @php($active = request()->routeIs($item['active'] ?? ''))
-                        <a href="{{ $item['url'] }}"
-                            class="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold no-underline transition {{ $active ? 'bg-matcha-700 text-white' : 'text-stone-600 hover:bg-matcha-100' }}">
-                            <i class="bi {{ $item['icon'] }}"></i>{{ $item['label'] }}
-                        </a>
-                    @endforeach
-                </nav>
+                <div class="relative hidden sm:block">
+                    <i class="bi bi-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-stone-400"></i>
+                    <input class="w-56 rounded-xl border border-matcha-200 bg-white py-2 pl-8 pr-3 text-sm outline-none placeholder:text-stone-400 focus:border-matcha-500" placeholder="Cari sesuatu...">
+                </div>
+                @auth
+                    <div class="flex items-center gap-2">
+                        <div class="flex h-8 w-8 items-center justify-center rounded-full bg-matcha-200 text-sm font-bold text-matcha-800">{{ $initial }}</div>
+                        <span class="hidden text-sm font-semibold text-matcha-900 sm:inline">
+                            {{ auth()->user()->isAdmin() ? 'Admin' : explode(' ', auth()->user()->name)[0] }}
+                        </span>
+                    </div>
+                @else
+                    <a href="{{ route('login') }}" class="btn-matcha !py-1.5 text-xs no-underline">
+                        <i class="bi bi-box-arrow-in-right"></i> Masuk
+                    </a>
+                @endauth
             </header>
 
             <main class="px-4 py-6 sm:px-8">
