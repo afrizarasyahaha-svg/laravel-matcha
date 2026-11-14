@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Services\CartService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class CheckoutController extends Controller
@@ -49,10 +50,9 @@ class CheckoutController extends Controller
             return back()->with('error', 'Keranjang masih kosong. Pilih menu terlebih dahulu.');
         }
 
-        // Hitung ulang harga di server (tidak mempercayai harga dari session/klien),
-        // mengikuti logika orderController.createOrder di backend lama.
+        // Hitung ulang harga di server (tidak mempercayai harga dari session/klien)
         $itemsData = [];
-        $subtotal = 0.0;
+        $subtotal = 0;
 
         foreach ($rows as $row) {
             $product = Product::with('variants')->find($row['product_id']);
@@ -79,30 +79,41 @@ class CheckoutController extends Controller
             $quantity = (int) $row['qty'];
             $subtotal += $unitPrice * $quantity;
 
+            // Menyiapkan data item dengan sweetness dan note dari keranjang
             $itemsData[] = [
                 'product_id' => $product->id,
                 'product_variant_id' => $variant?->id,
                 'quantity' => $quantity,
+                'sweetness' => $row['sweetness'] ?? null,
+                'note' => $row['note'] ?? null,
                 'unit_price' => $unitPrice,
             ];
         }
 
-        $shippingFee = $data['type'] === 'antar' ? self::ONGKIR_FLAT : 0.0;
+        $shippingFee = $data['type'] === 'antar' ? self::ONGKIR_FLAT : 0;
         $totalAmount = $subtotal + $shippingFee;
 
         $shippingAddress = $data['type'] === 'antar'
             ? $data['address']
             : 'Ambil di tempat (Dine-in/Takeaway)'.(! empty($data['pickup']) ? ' · Ambil: '.$data['pickup'] : '');
 
-        $order = DB::transaction(function () use ($request, $data, $itemsData, $shippingFee, $totalAmount, $shippingAddress) {
+        $order = DB::transaction(function () use ($request, $data, $itemsData, $shippingFee, $subtotal, $totalAmount, $shippingAddress) {
+            // Generate order number unik, misal: MATCHA-YYYYMMDD-XXXX
+            $orderNumber = 'MATCHA-'.date('Ymd').'-'.strtoupper(Str::random(5));
+
             $order = Order::create([
                 'user_id' => $request->user()?->id,
+                'order_number' => $orderNumber,
                 'customer_name' => $data['name'],
                 'customer_phone' => $data['phone'],
                 'shipping_address' => $shippingAddress,
                 'shipping_fee' => $shippingFee,
+                'subtotal' => (int) $subtotal,
+                'discount_amount' => 0,
                 'total_amount' => $totalAmount,
+                'delivery_type' => $data['type'], // 'antar' atau 'ambil'
                 'order_status' => Order::STATUS_PROCESSING,
+                'payment_status' => 'UNPAID',
             ]);
 
             $order->items()->createMany($itemsData);

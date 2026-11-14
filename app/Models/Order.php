@@ -2,12 +2,16 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Order extends Model
 {
+    use HasFactory;
+    
     public const STATUS_PENDING = 'PENDING_PAYMENT';
 
     public const STATUS_PROCESSING = 'PROCESSING';
@@ -25,19 +29,35 @@ class Order extends Model
 
     protected $fillable = [
         'user_id',
+        'order_number',
         'customer_name',
         'customer_phone',
         'shipping_address',
         'shipping_fee',
+        'subtotal',
+        'discount_amount',
         'total_amount',
+        'delivery_type',
         'order_status',
+        'payment_status',
+        'paid_at',
+        'expires_at',
+        'completed_at',
+        'cancelled_at',
+        'notes',
     ];
 
     protected function casts(): array
     {
         return [
             'shipping_fee' => 'decimal:2',
+            'subtotal' => 'integer',
+            'discount_amount' => 'integer',
             'total_amount' => 'decimal:2',
+            'paid_at' => 'datetime',
+            'expires_at' => 'datetime',
+            'completed_at' => 'datetime',
+            'cancelled_at' => 'datetime',
         ];
     }
 
@@ -51,6 +71,11 @@ class Order extends Model
         return $this->hasMany(OrderItem::class);
     }
 
+    public function payment(): HasOne
+    {
+        return $this->hasOne(Payment::class);
+    }
+
     public function getStatusLabelAttribute(): string
     {
         return self::STATUS_LABELS[$this->order_status] ?? $this->order_status;
@@ -61,9 +86,10 @@ class Order extends Model
         return (int) $this->items->sum('quantity');
     }
 
-    public function getDeliveryTypeAttribute(): string
+    public function getDeliveryTypeAttribute($value): string
     {
-        return (float) $this->shipping_fee > 0 ? 'antar' : 'ambil';
+        // Mengambil langsung dari kolom database, dengan fallback aman jika kosong
+        return $value ?? 'ambil';
     }
 
     /** Kode tampilan pesanan, mis. #MB-00012. */
