@@ -11,6 +11,7 @@ use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\OrderHistoryController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\PaymentController;
 
 /*
 |--------------------------------------------------------------------------
@@ -57,6 +58,20 @@ Route::delete('/keranjang/{row}', [CartController::class, 'remove'])->name('cart
 Route::get('/checkout', [CheckoutController::class, 'index'])->name('checkout.index');
 Route::post('/checkout', [CheckoutController::class, 'store'])->name('checkout.store');
 Route::get('/riwayat-pesanan', [OrderHistoryController::class, 'index'])->name('orders.history');
+
+/*
+|--------------------------------------------------------------------------
+| Pembayaran (API)
+|--------------------------------------------------------------------------
+*/
+// Halaman Pembayaran Pelanggan
+Route::get('/payments/{order}', [PaymentController::class, 'show'])->name('payment.show');
+// Polling status pembayaran (di web.php agar session/auth terbaca)
+Route::get('/payments/{order}/status', [PaymentController::class, 'status'])->name('payment.status');
+Route::get('/payments/{order}/debug', [PaymentController::class, 'debug']); // SEMENTARA
+
+// Webhook Midtrans (Tanpa auth & tanpa CSRF)
+Route::post('/payments/midtrans/notification', [PaymentController::class, 'notification']);
 
 /*
 |--------------------------------------------------------------------------

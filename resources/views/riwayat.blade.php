@@ -94,6 +94,31 @@
                             </div>
                         </dl>
                     </div>
+
+                    <!-- Status Pembayaran & Tombol Aksi (Sub-bab 3.2.11) -->
+                    <div class="flex flex-wrap items-center justify-between gap-4 mt-4 pt-3 border-t border-stone-100">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs text-stone-500">Status Pembayaran:</span>
+                            <span class="px-2.5 py-1 text-xs font-bold rounded-full 
+                                {{ in_array($order->payment_status, ['PAID', 'settlement']) ? 'bg-emerald-100 text-emerald-800' : '' }}
+                                {{ in_array($order->payment_status, ['PENDING', 'UNPAID', '']) ? 'bg-amber-100 text-amber-800' : '' }}
+                                {{ in_array($order->payment_status, ['EXPIRED', 'CANCELLED', 'deny']) ? 'bg-rose-100 text-rose-800' : '' }}">
+                                {{ $order->payment_status ?? 'UNPAID' }}
+                            </span>
+                        </div>
+
+                        <div>
+                            @if(in_array($order->payment_status, ['UNPAID', 'PENDING', '']) && $order->order_status !== 'CANCELLED')
+                                <a href="{{ route('payment.show', $order) }}" class="btn-matcha !text-xs !py-1.5 !px-3 no-underline inline-flex items-center">
+                                    <i class="bi bi-credit-card mr-1"></i> Bayar Sekarang
+                                </a>
+                            @else
+                                <a href="{{ route('payment.show', $order) }}" class="text-xs font-semibold text-matcha-700 hover:underline inline-flex items-center">
+                                    <i class="bi bi-eye mr-1"></i> Detail Pesanan
+                                </a>
+                            @endif
+                        </div>
+                    </div>
                 </div>
             @endforeach
         </div>
