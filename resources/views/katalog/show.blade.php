@@ -1,5 +1,5 @@
 <x-layouts.dashboard :nav="\App\Support\Navigation::konsumen()" role-label="Konsumen"
-    title="Detail Menu" subtitle="Sesuaikan varian, tingkat gula, dan catatan pesananmu" :show-cart="true">
+    title="Detail Menu" subtitle="Sesuaikan varian, tingkat gula, dan catatan pesananmu">
     <div class="mx-auto w-full max-w-5xl">
         <a href="{{ route('katalog.index') }}" class="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-matcha-700 no-underline transition hover:text-matcha-900">
             <i class="bi bi-arrow-left"></i> Kembali ke katalog
@@ -9,11 +9,11 @@
             {{-- Gambar & deskripsi --}}
             <div class="card-soft overflow-hidden lg:col-span-2">
                 <div class="aspect-[4/3]">
-                    <x-drink-image :src="$product->image" :tone="$product->tone" :alt="$product->name" />
+                    <x-drink-image :src="$product->image" :tone="$product->getAttributes()['tone'] ?? $product->tone" :alt="$product->name" />
                 </div>
                 <div class="p-5">
                     <span class="inline-block rounded-full bg-matcha-100 px-2.5 py-0.5 text-[11px] font-semibold text-matcha-700">
-                        {{ $product->tag }}
+                        {{ $product->getAttributes()['tag'] ?? $product->tag }}
                     </span>
                     <h1 class="mt-2 text-xl font-extrabold text-matcha-900">{{ $product->name }}</h1>
                     <p class="mt-2 text-sm text-stone-500">{{ $product->description ?: 'Matcha premium yang disiapkan segar untukmu.' }}</p>
@@ -41,7 +41,7 @@
                                 <label class="flex cursor-pointer items-center gap-3 rounded-xl border border-matcha-200 bg-white p-3 transition-all duration-300 has-[:checked]:border-matcha-700 has-[:checked]:bg-matcha-50 has-[:checked]:ring-1 has-[:checked]:ring-matcha-700 {{ $outOfStock ? 'cursor-not-allowed opacity-60' : 'hover:border-matcha-500' }}">
                                     <input type="radio" name="product_variant_id" value="{{ $variant->id }}"
                                         @checked(old('product_variant_id', $product->variants->first()->id) == $variant->id)
-                                        @disabled($outOfStock) required class="h-4 w-4 border-matcha-300 text-matcha-700 focus:ring-matcha-400">
+                                        @disabled($outOfStock) required class="h-4 w-4 accent-matcha-700">
                                     <span class="min-w-0 flex-1">
                                         <span class="block text-sm font-semibold text-matcha-900">{{ $variant->variant_name }}</span>
                                         <span class="block text-xs {{ $outOfStock ? 'text-red-600' : 'text-stone-500' }}">

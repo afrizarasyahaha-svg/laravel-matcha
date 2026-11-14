@@ -18,14 +18,14 @@
             </div>
         @endif
 
-        <div class="mb-4 grid gap-3 sm:grid-cols-3">
+        <div class="mb-4 grid gap-4 md:grid-cols-3">
             <x-stat-card label="Item menipis" :value="$stats['low']" note="Perlu restock" tone="warn" icon="bi-exclamation" />
             <x-stat-card label="Stok habis" :value="$stats['out']" tone="muted" icon="bi-x-circle" />
             <x-stat-card label="Total item aktif" :value="$stats['total']" note="{{ $stats['safe'] }} aman" icon="bi-clipboard-data" />
         </div>
 
         <div class="card-soft p-5">
-            <x-section-title title="Daftar Persediaan" desc="Stok per varian produk beserta batas minimumnya." />
+            <x-section-title title="Daftar Persediaan" desc="Stok bahan dan perlengkapan beserta batas minimumnya." />
 
             <div class="overflow-x-auto">
                 <table class="table-matcha">

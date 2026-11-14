@@ -8,10 +8,40 @@
         'berry' => ['liquid' => '#e5708c', 'top' => '#6fb326', 'bg' => '#f8d9e0'],
     ];
     $t = $tones[$tone] ?? $tones['latte'];
+
+    // 1) pakai gambar dari database kalau filenya ada / berupa URL
+    $resolved = null;
+    if ($src) {
+        $clean = ltrim((string) $src, '/');
+        if (preg_match('#^(https?:)?//#', $src)) {
+            // URL contoh bawaan seeder lama (example.com) tidak dianggap gambar sungguhan
+            $host = (string) parse_url(str_starts_with($src, '//') ? 'https:'.$src : $src, PHP_URL_HOST);
+            if (! preg_match('/(^|\.)example\.(com|org|net)$/i', $host)) {
+                $resolved = $src;
+            }
+        } elseif (str_starts_with($src, 'data:')) {
+            $resolved = $src;
+        } elseif (file_exists(public_path($clean))) {
+            $resolved = asset($clean);
+        } elseif (file_exists(public_path('storage/'.$clean))) {
+            $resolved = asset('storage/'.$clean);
+        }
+    }
+
+    // 2) kalau belum ada, cari foto asli di public/images/menu yang namanya cocok dengan nama produk
+    if (! $resolved && $alt) {
+        $photos = collect(glob(public_path('images/menu/*.{jpg,jpeg,png,webp}'), GLOB_BRACE) ?: [])
+            ->mapWithKeys(fn ($path) => [pathinfo($path, PATHINFO_FILENAME) => basename($path)]);
+        $slug = \Illuminate\Support\Str::slug($alt);
+        $match = $photos->keys()->filter(fn ($name) => str_contains($slug, $name))->sortByDesc(fn ($name) => strlen($name))->first();
+        if ($match) {
+            $resolved = asset('images/menu/'.$photos[$match]);
+        }
+    }
 @endphp
 
-@if ($src)
-    <img src="{{ $src }}" alt="{{ $alt }}"
+@if ($resolved)
+    <img src="{{ $resolved }}" alt="{{ $alt }}" loading="lazy"
         {{ $attributes->merge(['class' => 'h-full w-full object-cover '.($rounded ? 'rounded-xl' : '')]) }} />
 @else
     <div {{ $attributes->merge(['class' => 'flex h-full w-full items-center justify-center '.($rounded ? 'rounded-xl' : '')]) }}
