@@ -36,7 +36,8 @@
                             <th>Waktu</th>
                             <th>Item</th>
                             <th>Total</th>
-                            <th>Status</th>
+                            <th>Status Pesanan</th>
+                            <th>Status Pembayaran</th> <!-- Kolom Baru (3.2.12) -->
                             <th>Aksi</th>
                         </tr>
                     </thead>
@@ -63,6 +64,17 @@
                                 <td>{{ $order->item_count }} menu</td>
                                 <td class="whitespace-nowrap">Rp {{ number_format((float) $order->total_amount, 0, ',', '.') }}</td>
                                 <td><x-status-badge :status="$order->order_status" /></td>
+                                
+                                <!-- Badge Status Pembayaran Admin -->
+                                <td>
+                                    <span class="px-2.5 py-1 text-xs font-bold rounded-full 
+                                        {{ in_array($order->payment_status, ['PAID', 'settlement']) ? 'bg-emerald-100 text-emerald-800' : '' }}
+                                        {{ in_array($order->payment_status, ['PENDING', 'UNPAID', '']) ? 'bg-amber-100 text-amber-800' : '' }}
+                                        {{ in_array($order->payment_status, ['EXPIRED', 'CANCELLED', 'deny']) ? 'bg-rose-100 text-rose-800' : '' }}">
+                                        {{ $order->payment_status ?? 'UNPAID' }}
+                                    </span>
+                                </td>
+
                                 <td class="whitespace-nowrap">
                                     <form method="POST" action="{{ route('admin.orders.status', $order) }}" class="flex items-center gap-1.5">
                                         @csrf
@@ -95,7 +107,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="8" class="py-8 text-center text-stone-400">Tidak ada pesanan yang cocok.</td>
+                                <td colspan="9" class="py-8 text-center text-stone-400">Tidak ada pesanan yang cocok.</td>
                             </tr>
                         @endforelse
                     </tbody>
