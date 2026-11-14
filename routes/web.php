@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\OrderController as AdminOrderController;
 use App\Http\Controllers\Admin\ProductController as AdminProductController;
 use App\Http\Controllers\Admin\StockController;
@@ -80,4 +81,6 @@ Route::prefix('admin')
 
         Route::get('/pesanan', [AdminOrderController::class, 'index'])->name('orders.index');
         Route::patch('/pesanan/{order}/status', [AdminOrderController::class, 'updateStatus'])->name('orders.status');
+        Route::get('/laporan-penjualan', [ReportController::class, 'daily'])
+            ->name('reports.daily');
     });
