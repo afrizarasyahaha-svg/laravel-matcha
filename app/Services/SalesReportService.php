@@ -108,4 +108,88 @@ class SalesReportService
             ];
         });
     }
+
+    /**
+     * Rekap penjualan satu bulan penuh 
+     */
+    public function monthly(int $year, int $month): array
+    {
+        $start = Carbon::create($year, $month, 1)->startOfMonth();
+
+        return $this->period($start, $start->copy()->endOfMonth());
+    }
+
+    /**
+     * Rekap penjualan satu minggu ISO (Senin - Minggu).
+     */
+    public function weekly(int $isoYear, int $isoWeek): array
+    {
+        $start = Carbon::now()->setISODate($isoYear, $isoWeek, 1)->startOfDay();
+
+        return $this->period($start, $start->copy()->addDays(6));
+    }
+
+    /**
+     * Inti agregasi: satu baris per hari dalam rentang, termasuk hari tanpa
+     * penjualan (nilai 0). Total dihitung dari penjumlahan baris harian,
+     * sehingga total periode selalu sama dengan jumlah rekap harian.
+     */
+    private function period(Carbon $start, Carbon $end): array
+    {
+        $start = $start->copy()->startOfDay();
+        $end = $end->copy()->endOfDay();
+
+        $orderRows = DB::table('orders')
+            ->where('order_status', Order::STATUS_COMPLETED)
+            ->whereBetween('completed_at', [$start, $end])
+            ->selectRaw('
+                DATE(completed_at) as sale_date,
+                COUNT(*) as total_transactions,
+                SUM(total_amount) as total_revenue
+            ')
+            ->groupByRaw('DATE(completed_at)')
+            ->get()
+            ->keyBy('sale_date');
+
+        $itemRows = DB::table('order_items')
+            ->join('orders', 'order_items.order_id', '=', 'orders.id')
+            ->where('orders.order_status', Order::STATUS_COMPLETED)
+            ->whereBetween('orders.completed_at', [$start, $end])
+            ->selectRaw('
+                DATE(orders.completed_at) as sale_date,
+                SUM(order_items.quantity) as total_items
+            ')
+            ->groupByRaw('DATE(orders.completed_at)')
+            ->get()
+            ->keyBy('sale_date');
+
+        $days = collect();
+
+        for ($cursor = $start->copy(); $cursor->lte($end); $cursor->addDay()) {
+            $key = $cursor->toDateString();
+
+            $days->push([
+                'date' => $key,
+                'day' => (int) $cursor->format('j'),
+                'total_revenue' => (float) ($orderRows->get($key)->total_revenue ?? 0),
+                'total_transactions' => (int) ($orderRows->get($key)->total_transactions ?? 0),
+                'total_items_sold' => (int) ($itemRows->get($key)->total_items ?? 0),
+            ]);
+        }
+
+        $totalRevenue = $days->sum('total_revenue');
+        $totalTransactions = $days->sum('total_transactions');
+
+        return [
+            'start' => $start->copy()->startOfDay(),
+            'end' => $end->copy()->startOfDay(),
+            'total_revenue' => $totalRevenue,
+            'total_transactions' => (int) $totalTransactions,
+            'total_items_sold' => (int) $days->sum('total_items_sold'),
+            'average_transaction' => $totalTransactions > 0
+                ? $totalRevenue / $totalTransactions
+                : 0,
+            'days' => $days,
+        ];
+    }
 }

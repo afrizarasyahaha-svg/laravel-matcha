@@ -4,7 +4,7 @@
     <div class="w-full space-y-4">
 
         {{-- Filter tanggal --}}
-        <div class="card-soft p-5">
+        <!-- <div class="card-soft p-5">
             <form action="{{ route('admin.reports.daily') }}" method="GET"
                 class="flex flex-wrap items-end gap-3">
 
@@ -27,7 +27,10 @@
                     Hari Ini
                 </a>
             </form>
-        </div>
+        </div> -->
+
+        {{-- Kontrol periode --}}
+        <x-report-period-tabs active="daily" :value="$date->toDateString()" />
 
         {{-- Ringkasan penjualan --}}
         <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
