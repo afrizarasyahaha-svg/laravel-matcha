@@ -100,4 +100,8 @@ Route::prefix('admin')
         Route::patch('/pesanan/{order}/lunas', [AdminOrderController::class, 'markPaid'])->name('orders.paid');
         Route::get('/laporan-penjualan', [ReportController::class, 'daily'])
             ->name('reports.daily');
+        Route::get('/laporan-penjualan/mingguan', [ReportController::class, 'weekly'])
+            ->name('reports.weekly');
+        Route::get('/laporan-penjualan/bulanan', [ReportController::class, 'monthly'])
+            ->name('reports.monthly');
     });

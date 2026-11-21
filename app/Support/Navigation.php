@@ -33,7 +33,15 @@ class Navigation
                 ],
             ],
             ['label' => 'Pesanan', 'icon' => 'bi-receipt', 'url' => route('admin.orders.index'), 'active' => 'admin.orders.*'],
-            ['label' => 'Laporan Penjualan', 'icon' => 'bi-bar-chart-line', 'url' => route('admin.reports.daily'), 'active' => 'admin.reports.*'],
+                        [
+                'label' => 'Rekap Penjualan',
+                'icon' => 'bi-bar-chart-line',
+                'children' => [
+                    ['label' => 'Harian', 'url' => route('admin.reports.daily'), 'active' => 'admin.reports.daily'],
+                    ['label' => 'Mingguan', 'url' => route('admin.reports.weekly'), 'active' => 'admin.reports.weekly'],
+                    ['label' => 'Bulanan', 'url' => route('admin.reports.monthly'), 'active' => 'admin.reports.monthly'],
+                ],
+            ],
         ];
     }
 }
