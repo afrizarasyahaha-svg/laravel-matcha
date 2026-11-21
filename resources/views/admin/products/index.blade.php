@@ -57,7 +57,7 @@
                                     <div class="max-w-xs truncate text-xs text-stone-500">{{ $product->description }}</div>
                                 </td>
                                 <td>{{ $tagOf($product) }}</td>
-                                <td class="whitespace-nowrap">Rp {{ number_format((float) $product->base_price, 0, ',', '.') }}</td>
+                                <td class="whitespace-nowrap">Rp {{ number_format((int) $product->base_price, 0, ',', '.') }}</td>
                                 <td>
                                     <details>
                                         <summary class="cursor-pointer text-xs font-semibold text-matcha-700">{{ $product->variants_count }} varian</summary>
@@ -65,7 +65,7 @@
                                             @foreach ($product->variants as $variant)
                                                 <li class="flex justify-between gap-2">
                                                     <span>{{ $variant->variant_name }}</span>
-                                                    <span class="shrink-0">stok {{ $variant->stock }} · +Rp {{ number_format((float) $variant->additional_price, 0, ',', '.') }}</span>
+                                                    <span class="shrink-0">stok {{ $variant->stock }} · +Rp {{ number_format((int) $variant->additional_price, 0, ',', '.') }}</span>
                                                 </li>
                                             @endforeach
                                         </ul>

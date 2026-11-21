@@ -69,7 +69,7 @@
                             </td>
                             <td class="whitespace-nowrap text-xs">{{ $order->created_at?->format('d M Y, H:i') }}</td>
                             <td>{{ $order->item_count }} menu</td>
-                            <td class="whitespace-nowrap">Rp {{ number_format((float) $order->total_amount, 0, ',', '.') }}</td>
+                            <td class="whitespace-nowrap">Rp {{ number_format((int) $order->total_amount, 0, ',', '.') }}</td>
                             <td><x-status-badge :status="$order->order_status" /></td>
 
                             <!-- Badge Status Pembayaran Admin -->
@@ -159,7 +159,7 @@
                         <div class="flex justify-between"><dt class="text-stone-500">Status</dt><dd><x-status-badge :status="$order->order_status" /></dd></div>
                         <div class="flex justify-between"><dt class="text-stone-500">Waktu</dt><dd>{{ $order->created_at?->format('d M Y, H:i') }}</dd></div>
                         <div class="flex justify-between"><dt class="text-stone-500">Item</dt><dd>{{ $order->item_count }} menu</dd></div>
-                        <div class="flex justify-between"><dt class="text-stone-500">Total</dt><dd class="font-bold">Rp {{ number_format((float) $order->total_amount, 0, ',', '.') }}</dd></div>
+                        <div class="flex justify-between"><dt class="text-stone-500">Total</dt><dd class="font-bold">Rp {{ number_format((int) $order->total_amount, 0, ',', '.') }}</dd></div>
                         <div class="flex justify-between gap-4"><dt class="shrink-0 text-stone-500">Alamat</dt><dd class="text-right">{{ $order->shipping_address }}</dd></div>
                     </dl>
 

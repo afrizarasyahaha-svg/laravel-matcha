@@ -5,7 +5,7 @@
         @php
             $featured = $products->first(fn ($p) => str_contains(strtolower($p->name), 'authentic')) ?? $products->first();
             $menuCount = $products->count();
-            $minPrice = $menuCount ? (float) $products->min('base_price') : 0;
+            $minPrice = $menuCount ? (int) $products->min('base_price') : 0;
         @endphp
         <section class="relative overflow-hidden rounded-3xl bg-gradient-to-r from-matcha-100 to-matcha-200 px-6 py-8 sm:px-10 sm:py-10">
             <div class="pointer-events-none absolute -right-10 -top-10 h-48 w-48 rounded-full bg-matcha-300/40"></div>
@@ -64,7 +64,7 @@
                             <div class="line-clamp-1 text-xs font-bold text-matcha-900">{{ $featured->name }}</div>
                             <div class="mt-0.5 flex items-center justify-between gap-2">
                                 <span class="line-clamp-1 text-[11px] text-stone-500">{{ \Illuminate\Support\Str::limit($featured->description, 34) }}</span>
-                                <span class="shrink-0 text-sm font-extrabold text-matcha-700">Rp {{ number_format((float) $featured->base_price, 0, ',', '.') }}</span>
+                                <span class="shrink-0 text-sm font-extrabold text-matcha-700">Rp {{ number_format((int) $featured->base_price, 0, ',', '.') }}</span>
                             </div>
                         </div>
                     @endif

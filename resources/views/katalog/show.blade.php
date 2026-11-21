@@ -19,7 +19,7 @@
                     <p class="mt-2 text-sm text-stone-500">{{ $product->description ?: 'Matcha premium yang disiapkan segar untukmu.' }}</p>
                     <div class="mt-4 text-sm text-stone-500">
                         Mulai dari
-                        <span class="text-lg font-extrabold text-matcha-700">Rp {{ number_format((float) $product->base_price, 0, ',', '.') }}</span>
+                        <span class="text-lg font-extrabold text-matcha-700">Rp {{ number_format((int) $product->base_price, 0, ',', '.') }}</span>
                     </div>
                 </div>
             </div>
@@ -35,7 +35,7 @@
                         <div class="mt-1.5 grid gap-2.5">
                             @foreach ($product->variants as $index => $variant)
                                 @php
-                                    $price = (float) $product->base_price + (float) $variant->additional_price;
+                                    $price = (int) $product->base_price + (int) $variant->additional_price;
                                     $outOfStock = $variant->stock <= 0;
                                 @endphp
                                 <label class="flex cursor-pointer items-center gap-3 rounded-xl border border-matcha-200 bg-white p-3 transition-all duration-300 has-[:checked]:border-matcha-700 has-[:checked]:bg-matcha-50 has-[:checked]:ring-1 has-[:checked]:ring-matcha-700 {{ $outOfStock ? 'cursor-not-allowed opacity-60' : 'hover:border-matcha-500' }}">

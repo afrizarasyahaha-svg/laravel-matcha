@@ -4,6 +4,7 @@ namespace App\Services\Payment;
 
 use App\Models\Order;
 use App\Models\Payment;
+use App\Services\StockService;
 use Midtrans\Config;
 use Midtrans\Snap;
 use Illuminate\Support\Facades\DB;
@@ -11,7 +12,7 @@ use Illuminate\Support\Facades\Log;
 
 class MidtransService
 {
-    public function __construct()
+    public function __construct(private readonly StockService $stockService)
     {
         Config::$serverKey = config('services.midtrans.server_key');
         Config::$isProduction = config('services.midtrans.is_production', false);
@@ -392,7 +393,7 @@ class MidtransService
         $payload = $data;
 
         // 6. Validasi nominal pembayaran
-        if ((float) $payment->gross_amount !== (float) $grossAmount) {
+        if ((int) $payment->gross_amount !== (int) $grossAmount) {
             throw new \Exception('Gross amount mismatch.');
         }
 
@@ -423,6 +424,17 @@ class MidtransService
                 return;
             }
 
+            $orderStatus = $mappedStatus['order_status'];
+
+            // Jangan hidupkan kembali order batal yang stoknya sudah dikembalikan.
+            // Order batal lama (belum pernah memotong stok) masih boleh mengikuti
+            // notifikasi; potong stok ulang sengaja ditunda ke 3.4.8.
+            if ($order->order_status === Order::STATUS_CANCELLED
+                && $order->stock_restored_at
+                && $orderStatus !== Order::STATUS_CANCELLED) {
+                return;
+            }
+
             // Simpan status transaksi Midtrans
             $payment->transaction_status = $transactionStatus;
 
@@ -431,8 +443,6 @@ class MidtransService
 
             // Status order tidak boleh turun dari COMPLETED (mis. notifikasi
             // settlement duplikat yang datang setelah admin menyelesaikan order).
-            $orderStatus = $mappedStatus['order_status'];
-
             if (
                 $order->order_status === Order::STATUS_COMPLETED
                 && $orderStatus !== Order::STATUS_COMPLETED
@@ -451,14 +461,12 @@ class MidtransService
                 $order->expires_at = null;
             }
 
-            // Jika pembayaran dibatalkan atau kedaluwarsa
+            // Jika pembayaran dibatalkan atau kedaluwarsa, kembalikan stok.
+            // StockService mengabaikan order lama yang tidak pernah memotong stok.
             if ($mappedStatus['order_status'] === Order::STATUS_CANCELLED) {
                 $order->cancelled_at = $order->cancelled_at ?? now();
+                $this->stockService->restoreForOrder($order);
             }
-
-            // Catatan: stok tidak dikurangi saat checkout, sehingga TIDAK boleh
-            // dikembalikan di sini. Blok lama menaikkan stok produk/varian dan
-            // justru membuat stok membengkak setiap kali pembayaran gagal.
 
             // Simpan raw notification
             $payment->raw_response = $payload;

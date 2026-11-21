@@ -140,7 +140,7 @@
                                 <td>{{ $order->items->sum('quantity') }} menu</td>
 
                                 <td class="whitespace-nowrap">
-                                    Rp {{ number_format((float) $order->total_amount, 0, ',', '.') }}
+                                    Rp {{ number_format((int) $order->total_amount, 0, ',', '.') }}
                                 </td>
 
                                 <td>

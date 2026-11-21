@@ -77,7 +77,8 @@ document.addEventListener('click', (e) => {
     if (step) {
         const form = step.closest('form');
         const input = form.querySelector('input[name="qty"]');
-        const next = Math.min(99, Math.max(1, Number(input.value) + Number(step.dataset.qtyStep)));
+        const max = Number(step.dataset.qtyMax || 99);
+        const next = Math.min(max, Math.max(1, Number(input.value) + Number(step.dataset.qtyStep)));
         if (next !== Number(input.value)) {
             input.value = next;
             form.submit();
@@ -193,6 +194,21 @@ function initCheckout() {
             fields.classList.add('animate-fade-up');
         }
     };
+
+    // Cegah klik submit kedua. Idempotensi tetap dijaga server lewat checkout_token.
+    form.addEventListener('submit', (e) => {
+        if (form.dataset.submitting === '1') {
+            e.preventDefault();
+            return;
+        }
+        form.dataset.submitting = '1';
+        const button = form.querySelector('button[type="submit"]');
+        if (button) {
+            button.disabled = true;
+            const label = button.querySelector('[data-submit-label]');
+            if (label) label.textContent = 'Memproses...';
+        }
+    });
 
     form.querySelectorAll('[data-type]').forEach((r) => r.addEventListener('change', () => sync(true)));
     form.querySelectorAll('[data-payment-method]').forEach((r) => r.addEventListener('change', () => sync(false)));

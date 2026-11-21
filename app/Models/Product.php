@@ -23,8 +23,8 @@ class Product extends Model
     protected function casts(): array
     {
         return [
-            'base_price' => 'decimal:2',
-            'cost_price' => 'decimal:2',
+            'base_price' => 'integer',
+            'cost_price' => 'integer',
             'is_active' => 'boolean',
         ];
     }

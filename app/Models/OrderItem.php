@@ -23,7 +23,7 @@ class OrderItem extends Model
     {
         return [
             'quantity' => 'integer',
-            'unit_price' => 'decimal:2',
+            'unit_price' => 'integer',
         ];
     }
 
@@ -42,8 +42,8 @@ class OrderItem extends Model
         return $this->belongsTo(ProductVariant::class, 'product_variant_id');
     }
 
-    public function getSubtotalAttribute(): float
+    public function getSubtotalAttribute(): int
     {
-        return (float) $this->unit_price * $this->quantity;
+        return (int) $this->unit_price * (int) $this->quantity;
     }
 }
