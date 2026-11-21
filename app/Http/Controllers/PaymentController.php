@@ -7,6 +7,7 @@ use App\Services\Payment\MidtransService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class PaymentController extends Controller
 {
@@ -15,6 +16,42 @@ class PaymentController extends Controller
     public function __construct(MidtransService $midtransService)
     {
         $this->midtransService = $midtransService;
+    }
+
+    /**
+     * Log tidak boleh menggagalkan alur pembayaran.
+     */
+    private function logWarning(string $message, array $context = []): void
+    {
+        try {
+            Log::warning($message, $context);
+        } catch (\Throwable $e) {
+            // Diabaikan dengan sengaja.
+        }
+    }
+
+    /**
+     * sinkronkan status dari Midtrans sebelum memutuskan membuat token baru.
+     */
+    private function syncOnlineOrder(Order $order): void
+    {
+        if (
+            ! $order->usesMidtrans()
+            || $order->payment_status === 'PAID'
+            || ! $order->payment?->midtrans_order_id
+        ) {
+            return;
+        }
+
+        try {
+            $this->midtransService->syncFromMidtrans($order);
+            $order->refresh();
+        } catch (\Throwable $e) {
+            $this->logWarning('Sync status Midtrans gagal', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -46,6 +83,10 @@ class PaymentController extends Controller
                 : back()->with('error', $message);
         }
 
+        // Cek dulu ke Midtrans: webhook bisa saja gagal sehingga order masih
+        // terlihat belum dibayar padahal transaksinya sudah settlement.
+        $this->syncOnlineOrder($order);
+
         if ($order->payment_status === 'PAID') {
             return $request->expectsJson()
                 ? response()->json(['message' => 'Order sudah lunas.'], 409)
@@ -61,7 +102,7 @@ class PaymentController extends Controller
         try {
             $result = $this->midtransService->createSnapTransaction($order);
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('Gagal membuat token Midtrans', [
+            $this->logWarning('Gagal membuat token Midtrans', [
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
             ]);
@@ -94,6 +135,11 @@ class PaymentController extends Controller
 
         $order->load(['items.product', 'payment']);
 
+        // Jangan pernah membuat Snap baru sebelum memastikan status terbaru
+        // dari Midtrans (webhook bisa gagal atau datang terlambat).
+        $this->syncOnlineOrder($order);
+        $order->load(['items.product', 'payment']);
+
         $paymentError = null;
         $tokenExpired = $order->payment?->expires_at?->isPast() ?? false;
         $needsToken = ! $order->payment?->snap_token || $tokenExpired;
@@ -111,7 +157,7 @@ class PaymentController extends Controller
                 $order->refresh()->load(['items.product', 'payment']);
             } catch (\Throwable $e) {
                 $paymentError = $e->getMessage();
-                \Illuminate\Support\Facades\Log::warning('Gagal menyiapkan pembayaran Midtrans', [
+                $this->logWarning('Gagal menyiapkan pembayaran Midtrans', [
                     'order_id' => $order->id,
                     'error' => $paymentError,
                 ]);
@@ -129,22 +175,7 @@ class PaymentController extends Controller
         $this->authorizeOrderAccess($order);
 
         // Jika belum lunas, tanya langsung ke Midtrans (tidak bergantung webhook/ngrok).
-        // Pesanan tunai tidak punya transaksi Midtrans sehingga dilewati.
-        if (
-            $order->usesMidtrans()
-            && $order->payment_status !== 'PAID'
-            && $order->payment?->midtrans_order_id
-        ) {
-            try {
-                $this->midtransService->syncFromMidtrans($order);
-                $order->refresh();
-            } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::warning('Sync status Midtrans gagal', [
-                    'order_id' => $order->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
+        $this->syncOnlineOrder($order);
 
         $payment = $order->payment()->first();
 
@@ -164,9 +195,27 @@ class PaymentController extends Controller
     {
         try {
             $midtransService->handleNotification($request->all());
-            return response()->json(['status' => 'success', 'message' => 'Notification processed successfully.']);
-        } catch (\Exception $e) {
-            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 400);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Notification processed successfully.',
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            // Payload invalid / signature tidak bisa diverifikasi / order tidak dikenal.
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Invalid notification payload.',
+            ], 400);
+        } catch (\Throwable $e) {
+            // Error internal (termasuk Status API gagal): beri 500 agar Midtrans retry.
+            $this->logWarning('Gagal memproses webhook Midtrans', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Notification could not be processed.',
+            ], 500);
         }
     }
 }

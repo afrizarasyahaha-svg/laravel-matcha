@@ -132,7 +132,7 @@ class StockRestoreTest extends TestCase
         $this->assertNotNull($order->fresh()->stock_restored_at);
     }
 
-    public function test_midtrans_expire_restores_stock_and_late_settlement_is_ignored(): void
+    public function test_midtrans_expire_restores_stock_and_late_settlement_is_recorded_for_refund(): void
     {
         [, $variant, $order] = $this->makeDeductedOrder([
             'order_status' => Order::STATUS_PENDING,
@@ -163,7 +163,12 @@ class StockRestoreTest extends TestCase
             'gross_amount' => $order->total_amount,
         ]);
 
+        // Kebijakan A: pembayaran tercatat lunas, order tetap batal, stok tidak berubah.
         $this->assertSame(Order::STATUS_CANCELLED, $order->fresh()->order_status);
+        $this->assertSame('PAID', $order->fresh()->payment_status);
+        $this->assertSame('PAID', $payment->fresh()->payment_status);
+        $this->assertNotNull($order->fresh()->paid_at);
+        $this->assertStringContainsString('perlu refund', (string) $order->fresh()->notes);
         $this->assertSame(5, $variant->fresh()->stock);
     }
 }

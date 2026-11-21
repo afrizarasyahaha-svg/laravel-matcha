@@ -60,7 +60,7 @@
                                             <span class="block text-sm font-semibold text-matcha-900">{{ $option['title'] }}</span>
                                             <span class="block text-xs text-stone-500">{{ $option['desc'] }}</span>
                                             <span class="block text-xs font-semibold text-matcha-700">
-                                                {{ $option['key'] === 'antar' ? 'Ongkir flat Rp '.number_format($ongkir, 0, ',', '.') : 'Gratis ongkir' }}
+                                                {{ $option['key'] === 'antar' ? 'Ongkir sesuai tujuan & kurir' : 'Gratis ongkir' }}
                                             </span>
                                         </span>
                                     </span>
@@ -92,12 +92,75 @@
                                     class="input-matcha" placeholder="Jalan, nomor rumah, kota, kode pos">
                             </div>
 
-                            <div class="md:col-span-2" data-antar>
-                                <div class="flex items-center justify-between rounded-xl border border-matcha-200 bg-matcha-50/60 px-4 py-3 text-sm">
-                                    <span class="text-stone-600">
-                                        <i class="bi bi-bicycle mr-2 text-matcha-700"></i>Ongkir flat (berlaku untuk semua jarak)
+                            <div class="md:col-span-2 space-y-3" data-antar data-shipping-panel>
+                                @if ($originLabel)
+                                    <p class="flex items-start gap-2 rounded-xl bg-matcha-50 px-3 py-2 text-[11px] text-stone-600">
+                                        <i class="bi bi-geo-alt-fill mt-0.5 shrink-0 text-matcha-700"></i>
+                                        <span>Dikirim dari: <span class="font-semibold text-matcha-900">{{ $originLabel }}</span></span>
+                                    </p>
+                                @endif
+
+                                <div>
+                                    <label class="label-matcha !text-xs" for="destination-search">Cari tujuan pengiriman</label>
+                                    <div class="relative">
+                                        <input id="destination-search" type="search" autocomplete="off"
+                                            class="input-matcha" placeholder="Minimal 3 karakter, mis. Arjosari"
+                                            data-destination-search>
+                                        <div id="destination-results" data-destination-results hidden
+                                            class="absolute inset-x-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-xl border border-matcha-200 bg-white p-1 shadow-soft"></div>
+                                    </div>
+                                    <p class="mt-1 text-[11px] text-stone-400">Cari berdasarkan nama kecamatan, kota, atau kode pos.</p>
+                                    @error('shipping_destination_id')
+                                        <p class="mt-1 text-xs font-semibold text-rose-600">{{ $message }}</p>
+                                    @enderror
+                                </div>
+
+                                <div id="destination-selected" data-destination-selected hidden
+                                    class="flex items-center justify-between gap-3 rounded-xl border border-matcha-300 bg-matcha-50 px-3 py-2.5 text-sm">
+                                    <span class="flex min-w-0 items-start gap-2 text-matcha-900">
+                                        <i class="bi bi-check-circle-fill mt-0.5 shrink-0 text-matcha-700"></i>
+                                        <span class="truncate font-semibold" data-destination-selected-label></span>
                                     </span>
-                                    <span class="font-bold text-matcha-700">Rp {{ number_format($ongkir, 0, ',', '.') }}</span>
+                                    <button type="button" data-destination-clear
+                                        class="shrink-0 text-xs font-semibold text-matcha-700 underline">Ubah</button>
+                                </div>
+
+                                <input type="hidden" name="shipping_destination_id" data-shipping-destination-id
+                                    value="{{ old('shipping_destination_id') }}">
+                                <input type="hidden" name="shipping_destination_label" data-shipping-destination-label
+                                    value="{{ old('shipping_destination_label') }}">
+                                <input type="hidden" name="shipping_postal_code" data-shipping-postal-code
+                                    value="{{ old('shipping_postal_code') }}">
+                                <input type="hidden" name="shipping_courier" data-shipping-courier
+                                    value="{{ old('shipping_courier') }}">
+
+                                <div data-rates-panel>
+                                    <div class="flex items-center justify-between">
+                                        <label class="label-matcha !mb-0 !text-xs">Pilih kurir & layanan</label>
+                                        <span class="text-[11px] text-stone-400" data-rates-hint>Pilih tujuan terlebih dahulu.</span>
+                                    </div>
+
+                                    <div data-rates-loading hidden class="mt-2 flex items-center gap-2 rounded-xl bg-stone-50 px-3 py-3 text-xs text-stone-500">
+                                        <span class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-matcha-200 border-t-matcha-700"></span>
+                                        Mencari tarif pengiriman...
+                                    </div>
+
+                                    <div data-rates-empty hidden class="mt-2 rounded-xl border border-dashed border-matcha-200 px-3 py-3 text-xs text-stone-500">
+                                        Tidak ada layanan pengiriman untuk tujuan ini. Coba tujuan lain.
+                                    </div>
+
+                                    <div data-rates-error hidden class="mt-2 flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs text-rose-700">
+                                        <span data-rates-error-message>Gagal memuat tarif.</span>
+                                        <button type="button" data-rates-retry class="shrink-0 font-bold underline">Coba lagi</button>
+                                    </div>
+
+                                    <div data-rates-list class="mt-2 grid gap-2"></div>
+
+                                    @error('shipping_service')
+                                        <p class="mt-2 text-xs font-semibold text-rose-600">{{ $message }}</p>
+                                    @enderror
+                                    <input type="hidden" name="shipping_service" data-shipping-service
+                                        value="{{ old('shipping_service') }}">
                                 </div>
                             </div>
 
@@ -194,6 +257,7 @@
                         <button type="submit" class="btn-matcha mt-4 w-full">
                             <i class="bi bi-bag-check"></i> <span data-submit-label>Buat Pesanan</span>
                         </button>
+                        <p data-shipping-submit-error hidden class="mt-2 text-center text-xs font-semibold text-rose-600"></p>
                         <p class="mt-2 text-center text-[11px] text-stone-400" data-payment-note>
                             Pembayaran tunai dilakukan langsung di gerai / saat pesanan diantar.
                         </p>

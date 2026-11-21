@@ -147,8 +147,10 @@ class CheckoutPaymentFlowTest extends TestCase
         $response = $this->withSession(['cart' => $cart, 'checkout_tokens' => [$token]])->post('/checkout', [
             'name' => 'Budi',
             'phone' => '08123456789',
-            'type' => 'antar',
-            'address' => 'Jl. Mawar No. 1',
+            // Ongkir antar sekarang dihitung dinamis via RajaOngkir dan diuji
+            // di ShippingCheckoutTest; fokus test ini adalah alur pembayaran tunai.
+            'type' => 'ambil',
+            'pickup' => 'Secepatnya (± 15 menit)',
             'checkout_token' => $token,
             'payment_method' => Order::PAYMENT_METHOD_CASH,
         ]);
@@ -160,7 +162,7 @@ class CheckoutPaymentFlowTest extends TestCase
         $this->assertSame('UNPAID', $order->payment_status);
         $this->assertNull($order->expires_at);
         $this->assertSame(0, $order->payment()->count());
-        $this->assertSame(35000, (int) $order->total_amount);
+        $this->assertSame(25000, (int) $order->total_amount);
         $response->assertRedirect(route('payment.show', $order));
         $response->assertSessionHas('success');
     }
