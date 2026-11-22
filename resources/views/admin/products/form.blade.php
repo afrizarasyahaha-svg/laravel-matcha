@@ -7,7 +7,7 @@
             ? $product->variants->map(fn ($variant) => [
                 'id' => $variant->id,
                 'variant_name' => $variant->variant_name,
-                'additional_price' => (float) $variant->additional_price,
+                'additional_price' => (int) $variant->additional_price,
                 'stock' => $variant->stock,
             ])->all()
             : [];
@@ -49,13 +49,13 @@
                 <div>
                     <label class="label-matcha" for="base_price">Harga dasar (Rp) <span class="text-red-500">*</span></label>
                     <input id="base_price" name="base_price" type="number" min="0" step="500" required
-                        value="{{ old('base_price', (float) $product->base_price) }}" class="input-matcha" placeholder="25000">
+                        value="{{ old('base_price', (int) $product->base_price) }}" class="input-matcha" placeholder="25000">
                 </div>
 
                 <div>
                     <label class="label-matcha" for="cost_price">Harga modal (Rp)</label>
                     <input id="cost_price" name="cost_price" type="number" min="0" step="500"
-                        value="{{ old('cost_price', (float) $product->cost_price) }}" class="input-matcha" placeholder="12000">
+                        value="{{ old('cost_price', (int) $product->cost_price) }}" class="input-matcha" placeholder="12000">
                 </div>
 
                 <div class="sm:col-span-2">

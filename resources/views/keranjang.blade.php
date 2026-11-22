@@ -25,8 +25,9 @@
                                         <div class="truncate text-sm font-semibold text-matcha-900">{{ $row['name'] }}</div>
                                         <div class="text-xs text-stone-500">
                                             {{ $row['variant_name'] ?? 'Tanpa varian' }} • Manis {{ $row['sweet'] }}@if (! empty($row['note'])) • {{ $row['note'] }}@endif
+                                            @if ($row['stock'] !== null) • Stok {{ $row['stock'] }}@endif
                                         </div>
-                                        <div class="mt-1 text-sm font-bold text-matcha-700">Rp {{ number_format((float) $row['unit_price'], 0, ',', '.') }}</div>
+                                        <div class="mt-1 text-sm font-bold text-matcha-700">Rp {{ number_format((int) $row['unit_price'], 0, ',', '.') }}</div>
                                     </div>
 
                                     {{-- Stepper jumlah (mengirim PATCH ke cart.update) --}}
@@ -39,7 +40,8 @@
                                             <i class="bi bi-dash text-sm"></i>
                                         </button>
                                         <span class="w-5 text-center text-sm font-semibold">{{ $row['qty'] }}</span>
-                                        <button type="button" aria-label="Tambah" data-qty-step="1" @disabled($row['qty'] >= 99)
+                                        <button type="button" aria-label="Tambah" data-qty-step="1" data-qty-max="{{ $row['stock'] ?? 99 }}"
+                                            @disabled($row['qty'] >= ($row['stock'] ?? 99))
                                             class="flex h-7 w-7 items-center justify-center rounded-full border border-matcha-200 text-matcha-700 hover:bg-matcha-50 disabled:cursor-not-allowed disabled:opacity-40">
                                             <i class="bi bi-plus text-sm"></i>
                                         </button>
@@ -67,7 +69,7 @@
                     <dl class="mt-4 space-y-2 text-sm">
                         <div class="flex justify-between">
                             <dt class="text-stone-500">Subtotal</dt>
-                            <dd class="font-semibold">Rp {{ number_format((float) ($subtotal ?? 0), 0, ',', '.') }}</dd>
+                            <dd class="font-semibold">Rp {{ number_format((int) ($subtotal ?? 0), 0, ',', '.') }}</dd>
                         </div>
                         <div class="flex justify-between">
                             <dt class="text-stone-500">Ongkir</dt>
@@ -76,7 +78,7 @@
                     </dl>
                     <div class="mt-4 flex items-center justify-between border-t border-matcha-100 pt-4">
                         <span class="text-sm font-semibold text-matcha-900">Total sementara</span>
-                        <span class="text-lg font-extrabold text-matcha-700">Rp {{ number_format((float) ($subtotal ?? 0), 0, ',', '.') }}</span>
+                        <span class="text-lg font-extrabold text-matcha-700">Rp {{ number_format((int) ($subtotal ?? 0), 0, ',', '.') }}</span>
                     </div>
                     @if (empty($rows))
                         <button type="button" disabled class="btn-matcha mt-4 w-full">Lanjut Checkout</button>

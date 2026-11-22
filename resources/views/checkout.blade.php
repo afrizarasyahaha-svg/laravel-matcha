@@ -34,8 +34,9 @@
         </div>
     @else
         <form method="POST" action="{{ route('checkout.store') }}" class="w-full" id="checkout-form"
-            data-subtotal="{{ (float) $subtotal }}" data-ongkir="{{ (float) $ongkir }}">
+            data-subtotal="{{ (int) $subtotal }}" data-ongkir="{{ (int) $ongkir }}">
             @csrf
+            <input type="hidden" name="checkout_token" value="{{ $checkoutToken }}">
             <div class="grid gap-6 lg:grid-cols-12">
                 <div class="lg:col-span-8">
                     <div class="card-soft p-5 sm:p-6">
@@ -185,7 +186,7 @@
                             @foreach ($rows as $row)
                                 <li class="flex justify-between gap-2">
                                     <span class="truncate">{{ $row['qty'] }}× {{ $row['name'] }}</span>
-                                    <span class="shrink-0">Rp {{ number_format((float) $row['subtotal'], 0, ',', '.') }}</span>
+                                    <span class="shrink-0">Rp {{ number_format((int) $row['subtotal'], 0, ',', '.') }}</span>
                                 </li>
                             @endforeach
                         </ul>

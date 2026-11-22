@@ -92,19 +92,24 @@ class Order extends Model
         'completed_at',
         'cancelled_at',
         'notes',
+        'checkout_token',
+        'stock_deducted_at',
+        'stock_restored_at',
     ];
 
     protected function casts(): array
     {
         return [
-            'shipping_fee' => 'decimal:2',
+            'shipping_fee' => 'integer',
             'subtotal' => 'integer',
             'discount_amount' => 'integer',
-            'total_amount' => 'decimal:2',
+            'total_amount' => 'integer',
             'paid_at' => 'datetime',
             'expires_at' => 'datetime',
             'completed_at' => 'datetime',
             'cancelled_at' => 'datetime',
+            'stock_deducted_at' => 'datetime',
+            'stock_restored_at' => 'datetime',
         ];
     }
 

@@ -104,15 +104,15 @@
                         <dl class="space-y-1">
                             <div class="flex justify-between">
                                 <dt class="text-stone-500">Subtotal</dt>
-                                <dd>Rp {{ number_format((float) $order->total_amount - (float) $order->shipping_fee, 0, ',', '.') }}</dd>
+                                <dd>Rp {{ number_format((int) $order->total_amount - (int) $order->shipping_fee, 0, ',', '.') }}</dd>
                             </div>
                             <div class="flex justify-between">
                                 <dt class="text-stone-500">Ongkir</dt>
-                                <dd>{{ (float) $order->shipping_fee > 0 ? 'Rp '.number_format((float) $order->shipping_fee, 0, ',', '.') : 'Gratis' }}</dd>
+                                <dd>{{ (int) $order->shipping_fee > 0 ? 'Rp '.number_format((int) $order->shipping_fee, 0, ',', '.') : 'Gratis' }}</dd>
                             </div>
                             <div class="flex justify-between border-t border-matcha-100 pt-1 font-bold text-matcha-900">
                                 <dt>Total</dt>
-                                <dd class="text-matcha-700">Rp {{ number_format((float) $order->total_amount, 0, ',', '.') }}</dd>
+                                <dd class="text-matcha-700">Rp {{ number_format((int) $order->total_amount, 0, ',', '.') }}</dd>
                             </div>
                             <div class="flex justify-between text-xs text-stone-500">
                                 <dt>Pembayaran</dt>

@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Order;
+use App\Services\StockService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -12,7 +13,7 @@ class ExpireUnpaidOrders extends Command
 
     protected $description = 'Membatalkan pesanan yang belum dibayar hingga melewati batas waktu kedaluwarsa';
 
-    public function handle(): int
+    public function handle(StockService $stockService): int
     {
         $expiredOrders = Order::query()
             ->where('order_status', Order::STATUS_PENDING)
@@ -43,7 +44,7 @@ class ExpireUnpaidOrders extends Command
         }
 
         foreach ($expiredOrders as $expiredOrder) {
-            $cancelled = DB::transaction(function () use ($expiredOrder) {
+            $cancelled = DB::transaction(function () use ($expiredOrder, $stockService) {
                 $order = Order::whereKey($expiredOrder->id)
                     ->lockForUpdate()
                     ->first();
@@ -64,8 +65,9 @@ class ExpireUnpaidOrders extends Command
                     $order->payment->save();
                 }
 
-                // Stok tidak dikurangi saat checkout, jadi tidak ada yang perlu
-                // dikembalikan di sini.
+                // Stok dipotong saat checkout, jadi kembalikan di sini.
+                // StockService mengabaikan order lama yang belum pernah memotong stok.
+                $stockService->restoreForOrder($order);
 
                 return true;
             });

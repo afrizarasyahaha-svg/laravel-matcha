@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Services\Payment\MidtransService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Mockery\MockInterface;
 use Tests\TestCase;
 
@@ -30,6 +31,8 @@ class CheckoutPaymentFlowTest extends TestCase
                 ]);
         });
 
+        $token = (string) Str::uuid();
+
         $cart = [
             'row-1' => [
                 'product_id' => $product->id,
@@ -45,11 +48,12 @@ class CheckoutPaymentFlowTest extends TestCase
             ],
         ];
 
-        $response = $this->withSession(['cart' => $cart])->post('/checkout', [
+        $response = $this->withSession(['cart' => $cart, 'checkout_tokens' => [$token]])->post('/checkout', [
             'name' => 'Budi',
             'phone' => '08123456789',
             'type' => 'ambil',
             'pickup' => 'Secepatnya (± 15 menit)',
+            'checkout_token' => $token,
             'payment_method' => Order::PAYMENT_METHOD_QRIS,
         ]);
 
@@ -78,6 +82,8 @@ class CheckoutPaymentFlowTest extends TestCase
                 ->andThrow(new \Exception('Midtrans down'));
         });
 
+        $token = (string) Str::uuid();
+
         $cart = [
             'row-1' => [
                 'product_id' => $product->id,
@@ -93,10 +99,11 @@ class CheckoutPaymentFlowTest extends TestCase
             ],
         ];
 
-        $response = $this->withSession(['cart' => $cart])->post('/checkout', [
+        $response = $this->withSession(['cart' => $cart, 'checkout_tokens' => [$token]])->post('/checkout', [
             'name' => 'Budi',
             'phone' => '08123456789',
             'type' => 'ambil',
+            'checkout_token' => $token,
             'payment_method' => Order::PAYMENT_METHOD_BANK_TRANSFER,
         ]);
 
@@ -120,6 +127,8 @@ class CheckoutPaymentFlowTest extends TestCase
             $mock->shouldNotReceive('createSnapTransaction');
         });
 
+        $token = (string) Str::uuid();
+
         $cart = [
             'row-1' => [
                 'product_id' => $product->id,
@@ -135,11 +144,12 @@ class CheckoutPaymentFlowTest extends TestCase
             ],
         ];
 
-        $response = $this->withSession(['cart' => $cart])->post('/checkout', [
+        $response = $this->withSession(['cart' => $cart, 'checkout_tokens' => [$token]])->post('/checkout', [
             'name' => 'Budi',
             'phone' => '08123456789',
             'type' => 'antar',
             'address' => 'Jl. Mawar No. 1',
+            'checkout_token' => $token,
             'payment_method' => Order::PAYMENT_METHOD_CASH,
         ]);
 

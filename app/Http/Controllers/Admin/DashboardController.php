@@ -11,7 +11,7 @@ class DashboardController extends Controller
 {
     public function index()
     {
-        $todayRevenue = (float) Order::query()
+        $todayRevenue = (int) Order::query()
             ->where('order_status', Order::STATUS_COMPLETED)
             ->whereDate('created_at', today())
             ->sum('total_amount');

@@ -6,6 +6,8 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Services\CartService;
 use App\Services\Payment\MidtransService;
+use App\Services\StockService;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -29,10 +31,23 @@ class CheckoutController extends Controller
         $ongkir = self::ONGKIR_FLAT;
         $pickupOptions = self::PICKUP_OPTIONS;
 
-        return view('checkout', compact('rows', 'subtotal', 'ongkir', 'pickupOptions'));
+        // Token sekali pakai untuk mencegah dua submit membuat dua pesanan.
+        // Disimpan juga di session agar token buatan sembarangan ditolak.
+        $checkoutToken = (string) Str::uuid();
+        $tokens = session('checkout_tokens', []);
+        $tokens[] = $checkoutToken;
+        session(['checkout_tokens' => array_values(array_unique(array_slice($tokens, -5)))]);
+
+        return view('checkout', compact(
+            'rows',
+            'subtotal',
+            'ongkir',
+            'pickupOptions',
+            'checkoutToken'
+        ));
     }
 
-    public function store(Request $request, CartService $cart)
+    public function store(Request $request, CartService $cart, StockService $stockService)
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -40,6 +55,7 @@ class CheckoutController extends Controller
             'type' => ['required', 'in:antar,ambil'],
             'address' => ['required_if:type,antar', 'nullable', 'string', 'max:500'],
             'pickup' => ['nullable', 'string', 'max:100'],
+            'checkout_token' => ['required', 'uuid'],
             'payment_method' => ['required', 'in:'.implode(',', [
                 Order::PAYMENT_METHOD_CASH,
                 Order::PAYMENT_METHOD_QRIS,
@@ -49,9 +65,25 @@ class CheckoutController extends Controller
             'name.required' => 'Nama penerima wajib diisi.',
             'phone.required' => 'Nomor telepon wajib diisi.',
             'address.required_if' => 'Alamat wajib diisi untuk pesanan diantar.',
+            'checkout_token.required' => 'Token checkout tidak ditemukan. Muat ulang halaman checkout.',
+            'checkout_token.uuid' => 'Token checkout tidak valid.',
             'payment_method.required' => 'Metode pembayaran wajib dipilih.',
             'payment_method.in' => 'Metode pembayaran tidak valid.',
         ]);
+
+        $token = $data['checkout_token'];
+
+        // Submit kedua (atau reload setelah submit berhasil) langsung diarahkan
+        // ke pesanan yang sudah dibuat, bukan membuat pesanan duplikat.
+        $existingOrder = Order::where('checkout_token', $token)->first();
+
+        if ($existingOrder) {
+            return $this->redirectToExistingOrder($existingOrder, $request);
+        }
+
+        if (! in_array($token, session('checkout_tokens', []), true)) {
+            return back()->with('error', 'Sesi checkout tidak valid. Silakan muat ulang halaman checkout.');
+        }
 
         $rows = $cart->rows();
 
@@ -68,23 +100,36 @@ class CheckoutController extends Controller
 
             if (! $product || ! $product->is_active) {
                 throw ValidationException::withMessages([
-                    'cart' => 'Produk "' . $row['name'] . '" sudah tidak tersedia.',
+                    'cart' => 'Produk "'.$row['name'].'" sudah tidak tersedia.',
                 ]);
             }
 
+            $variants = $product->variants;
             $variant = null;
 
             if (! empty($row['variant_id'])) {
-                $variant = $product->variants->firstWhere('id', $row['variant_id']);
+                $variant = $variants->firstWhere('id', $row['variant_id']);
 
                 if (! $variant) {
                     throw ValidationException::withMessages([
-                        'cart' => 'Varian untuk produk "' . $product->name . '" tidak ditemukan.',
+                        'cart' => 'Varian untuk produk "'.$product->name.'" tidak ditemukan.',
                     ]);
                 }
             }
 
-            $unitPrice = (float) $product->base_price + ($variant ? (float) $variant->additional_price : 0);
+            if ($variants->isNotEmpty() && ! $variant) {
+                throw ValidationException::withMessages([
+                    'cart' => 'Pilih varian untuk produk "'.$product->name.'".',
+                ]);
+            }
+
+            if ($variants->isEmpty() && $variant) {
+                throw ValidationException::withMessages([
+                    'cart' => 'Produk "'.$product->name.'" tidak memiliki varian.',
+                ]);
+            }
+
+            $unitPrice = (int) $product->base_price + ($variant ? (int) $variant->additional_price : 0);
             $quantity = (int) $row['qty'];
             $subtotal += $unitPrice * $quantity;
 
@@ -93,7 +138,7 @@ class CheckoutController extends Controller
                 'product_id' => $product->id,
                 'product_variant_id' => $variant?->id,
                 'quantity' => $quantity,
-                'sweetness' => $row['sweetness'] ?? null,
+                'sweetness' => $row['sweetness'] ?? $row['sweet'] ?? null,
                 'note' => $row['note'] ?? null,
                 'unit_price' => $unitPrice,
             ];
@@ -108,39 +153,66 @@ class CheckoutController extends Controller
 
         $isCash = $data['payment_method'] === Order::PAYMENT_METHOD_CASH;
 
-        $order = DB::transaction(function () use ($request, $data, $itemsData, $shippingFee, $subtotal, $totalAmount, $shippingAddress, $isCash) {
-            // Generate order number unik, misal: MATCHA-YYYYMMDD-XXXX
-            $orderNumber = 'MATCHA-' . date('Ymd') . '-' . strtoupper(Str::random(5));
+        try {
+            $order = DB::transaction(function () use (
+                $request,
+                $data,
+                $token,
+                $itemsData,
+                $shippingFee,
+                $subtotal,
+                $totalAmount,
+                $shippingAddress,
+                $isCash,
+                $stockService
+            ) {
+                // Generate order number unik, misal: MATCHA-YYYYMMDD-XXXX
+                $orderNumber = 'MATCHA-'.date('Ymd').'-'.strtoupper(Str::random(5));
 
-            $order = Order::create([
-                'user_id' => $request->user()?->id,
-                'order_number' => $orderNumber,
-                'customer_name' => $data['name'],
-                'customer_phone' => $data['phone'],
-                'shipping_address' => $shippingAddress,
-                'shipping_fee' => $shippingFee,
-                'subtotal' => (int) $subtotal,
-                'discount_amount' => 0,
-                'total_amount' => $totalAmount,
-                'delivery_type' => $data['type'], // 'antar' atau 'ambil'
-                'payment_method' => $data['payment_method'],
-                // Tunai langsung diproses di gerai; QRIS/transfer menunggu pembayaran.
-                'order_status' => $isCash ? Order::STATUS_PROCESSING : Order::STATUS_PENDING,
-                'payment_status' => 'UNPAID',
-                'expires_at' => $isCash ? null : now()->addMinutes(config('services.midtrans.expiry_minutes', 15)),
-            ]);
+                $order = Order::create([
+                    'user_id' => $request->user()?->id,
+                    'order_number' => $orderNumber,
+                    'checkout_token' => $token,
+                    'customer_name' => $data['name'],
+                    'customer_phone' => $data['phone'],
+                    'shipping_address' => $shippingAddress,
+                    'shipping_fee' => $shippingFee,
+                    'subtotal' => $subtotal,
+                    'discount_amount' => 0,
+                    'total_amount' => $totalAmount,
+                    'delivery_type' => $data['type'], // 'antar' atau 'ambil'
+                    'payment_method' => $data['payment_method'],
+                    // Tunai langsung diproses di gerai; QRIS/transfer menunggu pembayaran.
+                    'order_status' => $isCash ? Order::STATUS_PROCESSING : Order::STATUS_PENDING,
+                    'payment_status' => 'UNPAID',
+                    'expires_at' => $isCash ? null : now()->addMinutes(config('services.midtrans.expiry_minutes', 15)),
+                ]);
 
-            $order->items()->createMany($itemsData);
+                $order->items()->createMany($itemsData);
 
-            return $order;
-        });
+                // Stok dipotong di dalam transaksi yang sama dengan pembuatan order.
+                // Jika stok ternyata tidak cukup, ValidationException menggulung
+                // seluruh transaksi sehingga tidak ada order setengah jadi.
+                $stockService->deductForOrder($order);
+
+                return $order;
+            });
+        } catch (QueryException $e) {
+            // Dua request bersamaan: yang kalah kena unique constraint checkout_token.
+            $existingOrder = Order::where('checkout_token', $token)->first();
+
+            if ($existingOrder) {
+                return $this->redirectToExistingOrder($existingOrder, $request);
+            }
+
+            throw $e;
+        }
 
         // Tamu: simpan id pesanan di session (pengganti localStorage FE lama)
-        if (! $request->user()) {
-            $guestOrders = session('guest_orders', []);
-            $guestOrders[] = $order->id;
-            session(['guest_orders' => array_values(array_unique($guestOrders))]);
-        }
+        $this->rememberGuestOrder($order, $request);
+
+        $tokens = array_values(array_diff(session('checkout_tokens', []), [$token]));
+        session(['checkout_tokens' => $tokens]);
 
         $cart->clear();
         session()->flash('new_order_id', $order->id);
@@ -171,5 +243,30 @@ class CheckoutController extends Controller
         return redirect()
             ->route('payment.show', $order)
             ->with('success', 'Pesanan berhasil dibuat. Silakan selesaikan pembayaran.');
+    }
+
+    private function rememberGuestOrder(Order $order, Request $request): void
+    {
+        if ($request->user()) {
+            return;
+        }
+
+        $guestOrders = session('guest_orders', []);
+        $guestOrders[] = $order->id;
+        session(['guest_orders' => array_values(array_unique($guestOrders))]);
+    }
+
+    private function redirectToExistingOrder(Order $order, Request $request)
+    {
+        if ($request->user() && (int) $order->user_id !== (int) $request->user()->id) {
+            return back()->with('error', 'Token checkout tidak valid untuk akun ini.');
+        }
+
+        // Pastikan tamu tetap bisa membuka halaman pembayaran pesanannya.
+        $this->rememberGuestOrder($order, $request);
+
+        return redirect()
+            ->route('payment.show', $order)
+            ->with('success', 'Pesanan ini sudah dibuat sebelumnya.');
     }
 }

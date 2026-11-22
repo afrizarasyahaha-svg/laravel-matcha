@@ -2,7 +2,7 @@
 
 @php
     $product = $product->loadMissing('variants');
-    $price = (float) $product->base_price;
+    $price = (int) $product->base_price;
     $href = route('katalog.index', ['produk' => $product->id]);
     // baca kolom asli (bukan accessor model) supaya kategori & warna sesuai data seeder
     $tag = $product->getAttributes()['tag'] ?? $product->tag;

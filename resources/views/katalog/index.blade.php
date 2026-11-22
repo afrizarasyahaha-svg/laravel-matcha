@@ -39,7 +39,7 @@
                                 $allOut = $variants->isNotEmpty() && $variants->every(fn ($v) => $v->stock <= 0);
                             @endphp
                             <form method="POST" action="{{ route('cart.add') }}" hidden
-                                data-product-panel="{{ $product->id }}" data-base="{{ (float) $product->base_price }}"
+                                data-product-panel="{{ $product->id }}" data-base="{{ (int) $product->base_price }}"
                                 class="rounded-2xl border border-matcha-100 bg-matcha-50/60 p-4">
                                 @csrf
                                 <input type="hidden" name="product_id" value="{{ $product->id }}">
@@ -56,7 +56,7 @@
                                             @foreach ($variants as $variant)
                                                 <label class="cursor-pointer" title="{{ $variant->stock <= 0 ? 'Stok habis' : 'Stok tersisa '.$variant->stock }}">
                                                     <input type="radio" name="product_variant_id" value="{{ $variant->id }}"
-                                                        data-add="{{ (float) $variant->additional_price }}" class="peer sr-only"
+                                                        data-add="{{ (int) $variant->additional_price }}" class="peer sr-only"
                                                         @checked($defaultVariant && $defaultVariant->id === $variant->id)
                                                         @disabled($variant->stock <= 0)>
                                                     <span class="{{ $pickChoice }} inline-flex h-8 min-w-10 items-center justify-center rounded-lg px-3">{{ $variant->variant_name }}</span>
@@ -88,7 +88,7 @@
 
                                 <div class="mt-5 flex items-center justify-between border-t border-matcha-100 pt-4">
                                     <span class="text-xs text-stone-500">Total harga</span>
-                                    <span data-total class="text-lg font-extrabold text-matcha-700">Rp {{ number_format((float) $product->base_price + (float) ($defaultVariant->additional_price ?? 0), 0, ',', '.') }}</span>
+                                    <span data-total class="text-lg font-extrabold text-matcha-700">Rp {{ number_format((int) $product->base_price + (int) ($defaultVariant->additional_price ?? 0), 0, ',', '.') }}</span>
                                 </div>
 
                                 <button type="submit" class="btn-matcha mt-3 w-full" @disabled($allOut)>

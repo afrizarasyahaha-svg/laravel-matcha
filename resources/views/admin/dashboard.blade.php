@@ -66,7 +66,7 @@
                                     <td class="whitespace-nowrap font-semibold text-matcha-900">{{ $order->code }}</td>
                                     <td>{{ $order->customer_name }}</td>
                                     <td>{{ $order->items_count ?? $order->item_count }} menu</td>
-                                    <td class="whitespace-nowrap">Rp {{ number_format((float) $order->total_amount, 0, ',', '.') }}</td>
+                                    <td class="whitespace-nowrap">Rp {{ number_format((int) $order->total_amount, 0, ',', '.') }}</td>
                                     <td><x-status-badge :status="$order->order_status" /></td>
                                     <td>
                                         <span class="px-2.5 py-1 text-xs font-bold rounded-full 

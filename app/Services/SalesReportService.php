@@ -104,7 +104,7 @@ class SalesReportService
                 'hour' => $hour,
                 'label' => str_pad($hour, 2, '0', STR_PAD_LEFT) . ':00',
                 'total_transactions' => (int) ($sale->total_transactions ?? 0),
-                'total_revenue' => (float) ($sale->total_revenue ?? 0),
+                'total_revenue' => (int) ($sale->total_revenue ?? 0),
             ];
         });
     }
@@ -171,7 +171,7 @@ class SalesReportService
             $days->push([
                 'date' => $key,
                 'day' => (int) $cursor->format('j'),
-                'total_revenue' => (float) ($orderRows->get($key)->total_revenue ?? 0),
+                'total_revenue' => (int) ($orderRows->get($key)->total_revenue ?? 0),
                 'total_transactions' => (int) ($orderRows->get($key)->total_transactions ?? 0),
                 'total_items_sold' => (int) ($itemRows->get($key)->total_items ?? 0),
             ]);
