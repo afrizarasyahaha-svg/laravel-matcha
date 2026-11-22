@@ -84,6 +84,9 @@
                                 <span class="px-2.5 py-1 text-xs font-bold rounded-full {{ $paymentTone }}">
                                     {{ $order->payment_status_label }}
                                 </span>
+                                @if ($order->order_status === 'CANCELLED' && $order->payment_status === 'PAID')
+                                    <div class="mt-1 text-[10px] font-bold text-amber-700">Perlu refund</div>
+                                @endif
                             </td>
 
                             <td class="whitespace-nowrap">
@@ -153,6 +156,11 @@
                 </div>
 
                 <div class="mt-3 text-sm">
+                    @if ($order->order_status === 'CANCELLED' && $order->payment_status === 'PAID')
+                        <div class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                            <b>Perlu refund:</b> pembayaran diterima setelah pesanan dibatalkan/kedaluwarsa. Stok tidak dipotong ulang.
+                        </div>
+                    @endif
                     <dl class="mb-4 space-y-1.5">
                         <div class="flex justify-between"><dt class="text-stone-500">Pembeli</dt><dd>{{ $order->customer_name }} · {{ $order->customer_phone }}</dd></div>
                         <div class="flex justify-between"><dt class="text-stone-500">Jenis</dt><dd>{{ $order->delivery_type === 'ambil' ? 'Ambil sendiri' : 'Diantar' }}</dd></div>

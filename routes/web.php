@@ -13,12 +13,14 @@ use App\Http\Controllers\HomeController;
 use App\Http\Controllers\OrderHistoryController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\ShippingController;
 
 /*
 |--------------------------------------------------------------------------
 | Publik
 |--------------------------------------------------------------------------
 */
+
 Route::get('/', [HomeController::class, 'landing'])->name('landing');
 Route::get('/beranda', [HomeController::class, 'beranda'])->name('beranda');
 
@@ -74,6 +76,20 @@ Route::get('/payments/{order}/status', [PaymentController::class, 'status'])->na
 
 // Webhook Midtrans (tanpa auth; CSRF dikecualikan di bootstrap/app.php)
 Route::post('/payments/midtrans/notification', [PaymentController::class, 'notification']);
+
+/*
+|--------------------------------------------------------------------------
+| Admin
+|--------------------------------------------------------------------------
+*/
+Route::prefix('shipping')->group(function () {
+    Route::get('/destinations', [ShippingController::class, 'destinations'])
+        ->middleware('throttle:20,1');
+
+    Route::get('/rates', [ShippingController::class, 'rates'])
+        ->middleware('throttle:30,1');
+});
+
 
 /*
 |--------------------------------------------------------------------------

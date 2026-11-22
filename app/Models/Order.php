@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Order extends Model
 {
     use HasFactory;
-    
+
     public const STATUS_PENDING = 'PENDING_PAYMENT';
 
     public const STATUS_PROCESSING = 'PROCESSING';
@@ -93,6 +93,14 @@ class Order extends Model
         'cancelled_at',
         'notes',
         'checkout_token',
+        'shipping_courier',
+        'shipping_service',
+        'shipping_etd',
+        'shipping_destination_id',
+        'shipping_destination_label',
+        'shipping_weight_grams',
+        'tracking_number',
+        'shipping_postal_code',
         'stock_deducted_at',
         'stock_restored_at',
     ];
@@ -110,6 +118,7 @@ class Order extends Model
             'cancelled_at' => 'datetime',
             'stock_deducted_at' => 'datetime',
             'stock_restored_at' => 'datetime',
+            'shipping_weight_grams' => 'integer',
         ];
     }
 
@@ -177,6 +186,6 @@ class Order extends Model
     /** Kode tampilan pesanan, mis. #MB-00012. */
     public function getCodeAttribute(): string
     {
-        return '#MB-'.str_pad((string) $this->id, 5, '0', STR_PAD_LEFT);
+        return '#MB-' . str_pad((string) $this->id, 5, '0', STR_PAD_LEFT);
     }
 }

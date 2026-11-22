@@ -63,6 +63,14 @@
                         <x-status-badge :status="$order->order_status" :label="$badgeLabel" />
                     </div>
 
+                    @if ($order->order_status === 'CANCELLED' && $order->payment_status === 'PAID')
+                        <div class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" role="alert">
+                            <i class="bi bi-exclamation-triangle mr-1"></i>
+                            <b>Pembayaran diterima setelah pesanan dibatalkan/kedaluwarsa — perlu refund.</b>
+                            Pesanan tetap dibatalkan dan stok tidak dipotong ulang. Hubungi gerai untuk proses refund.
+                        </div>
+                    @endif
+
                     @if ($trackable)
                         <ol class="mt-3 flex items-start" aria-label="Tahapan pesanan">
                             @foreach ($steps as $i => $step)

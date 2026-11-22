@@ -34,14 +34,14 @@ return [
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
     ],
-    
+
     'midtrans' => [
         'merchant_id' => env('MIDTRANS_MERCHANT_ID'),
         'client_key' => env('MIDTRANS_CLIENT_KEY'),
         'server_key' => env('MIDTRANS_SERVER_KEY'),
         'is_production' => env('MIDTRANS_IS_PRODUCTION', false),
-        'snap_base_url' => env('MIDTRANS_IS_PRODUCTION', false) 
-            ? 'https://app.midtrans.com/snap/snap.js' 
+        'snap_base_url' => env('MIDTRANS_IS_PRODUCTION', false)
+            ? 'https://app.midtrans.com/snap/snap.js'
             : 'https://app.sandbox.midtrans.com/snap/snap.js',
         'expiry_minutes' => 15,
         // Kanal yang ditampilkan di Snap sesuai metode pilihan pelanggan.
@@ -57,6 +57,14 @@ return [
                 'other_va',
             ],
         ],
+    ],
+
+    'rajaongkir' => [
+        'base_url' => env('RAJAONGKIR_BASE_URL', 'https://rajaongkir.komerce.id/api/v1'),
+        'api_key' => env('RAJAONGKIR_API_KEY'),
+        'origin_id' => env('RAJAONGKIR_ORIGIN_ID'),
+        'origin_label' => env('RAJAONGKIR_ORIGIN_LABEL'),
+        'cache_ttl' => env('RAJAONGKIR_CACHE_TTL', 600),
     ],
 
 ];

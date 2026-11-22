@@ -16,6 +16,7 @@ class Product extends Model
         'description',
         'base_price',
         'cost_price',
+        'weight_grams',
         'image_url',
         'is_active',
     ];

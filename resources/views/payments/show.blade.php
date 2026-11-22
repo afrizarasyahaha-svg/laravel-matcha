@@ -51,6 +51,16 @@
             </span>
         </div>
 
+        @if($order->order_status === 'CANCELLED' && $order->payment_status === 'PAID')
+            <div class="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" role="alert">
+                <div class="font-bold"><i class="bi bi-exclamation-triangle mr-1"></i> Pembayaran diterima setelah pesanan dibatalkan — perlu refund</div>
+                <p class="mt-1 text-xs">
+                    Dana sudah tercatat lunas di Midtrans, tetapi pesanan tetap dibatalkan dan stok tidak dipotong ulang.
+                    Silakan hubungi gerai untuk proses refund.
+                </p>
+            </div>
+        @endif
+
         <!-- Hitung Mundur Kedaluwarsa -->
         @if(! $isFinal && $order->payment && $order->payment->expires_at)
             <div class="mb-6 p-3 bg-amber-50 border border-amber-200 rounded-xl flex justify-between items-center text-xs text-amber-800">

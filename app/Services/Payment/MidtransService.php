@@ -12,12 +12,27 @@ use Illuminate\Support\Facades\Log;
 
 class MidtransService
 {
+    private const LATE_PAYMENT_NOTE = 'Pembayaran diterima setelah pesanan kedaluwarsa/dibatalkan — perlu refund.';
+
     public function __construct(private readonly StockService $stockService)
     {
         Config::$serverKey = config('services.midtrans.server_key');
         Config::$isProduction = config('services.midtrans.is_production', false);
         Config::$isSanitized = true;
         Config::$is3ds = true;
+    }
+
+    /**
+     * Logging tidak boleh menggagalkan pemrosesan webhook/pembayaran.
+     * ( Mis. storage/logs tidak writable oleh user web server. )
+     */
+    private function safeLog(string $level, string $message, array $context = []): void
+    {
+        try {
+            Log::log($level, $message, $context);
+        } catch (\Throwable $e) {
+            // Sengaja diabaikan: status pembayaran lebih penting daripada log.
+        }
     }
 
     /**
@@ -261,8 +276,20 @@ class MidtransService
     }
 
     /**
+     * Ambil status resmi dari Midtrans. Dipisahkan supaya bisa di-mock di test
+     * dan seluruh jalur webhook/polling memakai satu pintu yang sama.
+     */
+    public function fetchStatus(string $midtransOrderId): array
+    {
+        $response = \Midtrans\Transaction::status($midtransOrderId);
+
+        return json_decode(json_encode($response), true) ?: [];
+    }
+
+    /**
      * Sinkronkan status pembayaran langsung dari Midtrans (Status API),
-     * tanpa menunggu webhook. Dipakai oleh polling halaman pembayaran.
+     * tanpa menunggu webhook. Dipakai oleh polling halaman pembayaran,
+     * halaman riwayat, dan command rekonsiliasi.
      */
     public function syncFromMidtrans(Order $order): void
     {
@@ -272,18 +299,16 @@ class MidtransService
             return;
         }
 
-        $status = json_decode(
-            json_encode(\Midtrans\Transaction::status($payment->midtrans_order_id)),
-            true
-        );
+        $status = $this->fetchStatus($payment->midtrans_order_id);
 
-        Log::info('Midtrans Status API response', [
+        $this->safeLog('info', 'Midtrans Status API response', [
             'midtrans_order_id' => $payment->midtrans_order_id,
-            'response' => $status,
+            'transaction_status' => $status['transaction_status'] ?? null,
+            'status_code' => $status['status_code'] ?? null,
         ]);
 
         if (empty($status['transaction_status'])) {
-            Log::warning('Status API tidak mengembalikan transaction_status', [
+            $this->safeLog('warning', 'Status API tidak mengembalikan transaction_status', [
                 'midtrans_order_id' => $payment->midtrans_order_id,
                 'status_code' => $status['status_code'] ?? null,
                 'status_message' => $status['status_message'] ?? null,
@@ -292,17 +317,24 @@ class MidtransService
             return;
         }
 
-        // Status API tidak menyertakan 'signature_key' pada semua kasus,
-        // jadi diproses langsung (data berasal dari server Midtrans, bukan dari klien).
+        // Data berasal dari server Midtrans (bukan klien), jadi bisa diproses langsung.
         $this->applyStatus($payment, $status);
     }
 
     /**
      * Memproses notification webhook dari Midtrans.
+     *
+     * Melempar InvalidArgumentException untuk payload/order tidak valid (HTTP 400)
+     * dan RuntimeException untuk kegagalan internal/Status API (HTTP 500 agar
+     * Midtrans melakukan retry).
      */
     public function handleNotification(array $payload): bool
     {
-        Log::info('Midtrans Webhook Received', $payload);
+        $this->safeLog('info', 'Midtrans Webhook Received', [
+            'order_id' => $payload['order_id'] ?? null,
+            'transaction_status' => $payload['transaction_status'] ?? null,
+            'status_code' => $payload['status_code'] ?? null,
+        ]);
 
         // 1. Ambil data notification
         $orderId = $payload['order_id'] ?? null;
@@ -319,56 +351,57 @@ class MidtransService
             !$transactionStatus ||
             empty($payload['signature_key'])
         ) {
-            throw new \Exception(
-                'Incomplete Midtrans notification payload.'
-            );
+            throw new \InvalidArgumentException('Incomplete Midtrans notification payload.');
         }
 
         // 3. Verifikasi signature. Jika tidak cocok, jangan langsung percaya payload:
         //    tanyakan status resmi ke Midtrans (Status API) memakai server key kita.
         if (!$this->verifySignature($payload)) {
-            Log::warning('Invalid Midtrans signature, verifying via Status API', [
+            $this->safeLog('warning', 'Invalid Midtrans signature, verifying via Status API', [
                 'order_id' => $orderId,
             ]);
 
             try {
-                $verified = json_decode(json_encode(\Midtrans\Transaction::status($orderId)), true);
+                $verified = $this->fetchStatus((string) $orderId);
             } catch (\Throwable $e) {
-                Log::error('Midtrans Status API failed', [
+                $this->safeLog('error', 'Midtrans Status API failed', [
                     'order_id' => $orderId,
                     'error' => $e->getMessage(),
                 ]);
 
-                throw new \Exception('Invalid signature key.');
+                throw new \RuntimeException('Gagal memverifikasi notifikasi ke Midtrans.', 0, $e);
             }
 
             $transactionStatus = $verified['transaction_status'] ?? null;
             $fraudStatus = $verified['fraud_status'] ?? null;
             $grossAmount = $verified['gross_amount'] ?? $grossAmount;
-            $payload = array_merge($payload, $verified ?? []);
+            $payload = array_merge($payload, $verified);
 
             if (!$transactionStatus) {
-                throw new \Exception('Invalid signature key.');
+                throw new \RuntimeException('Status Midtrans tidak tersedia.');
             }
         }
 
-        // 4. Cari pembayaran berdasarkan Midtrans order ID
-        $payment = Payment::where(
-            'midtrans_order_id',
-            $orderId
-        )->first();
+        // 4. Cari pembayaran berdasarkan Midtrans order ID. Jika token sudah
+        //    diganti, fallback ke ID order dari prefix TRX-{orderId}-{timestamp}.
+        $payment = Payment::where('midtrans_order_id', $orderId)->first();
+
+        if (!$payment && preg_match('/^TRX-(\d+)-/', (string) $orderId, $matches)) {
+            $linkedOrder = Order::find((int) $matches[1]);
+            $payment = $linkedOrder?->payment;
+        }
 
         if (!$payment) {
-            Log::warning('Payment transaction not found', [
+            $this->safeLog('warning', 'Payment transaction not found', [
                 'order_id' => $orderId,
             ]);
 
-            throw new \Exception('Payment transaction not found.');
+            throw new \InvalidArgumentException('Payment transaction not found.');
         }
 
         // 5. Pastikan order tersedia
         if (!$payment->order) {
-            throw new \Exception('Order associated with payment not found.');
+            throw new \RuntimeException('Order associated with payment not found.');
         }
 
         // 6-8. Validasi nominal, pemetaan status, dan update database
@@ -394,7 +427,7 @@ class MidtransService
 
         // 6. Validasi nominal pembayaran
         if ((int) $payment->gross_amount !== (int) $grossAmount) {
-            throw new \Exception('Gross amount mismatch.');
+            throw new \InvalidArgumentException('Gross amount mismatch.');
         }
 
         // 7. Pemetaan status
@@ -426,20 +459,39 @@ class MidtransService
 
             $orderStatus = $mappedStatus['order_status'];
 
-            // Jangan hidupkan kembali order batal yang stoknya sudah dikembalikan.
-            // Order batal lama (belum pernah memotong stok) masih boleh mengikuti
-            // notifikasi; potong stok ulang sengaja ditunda ke 3.4.8.
+            // Kebijakan "settlement terlambat": pembayaran yang masuk setelah
+            // order dibatalkan/stok dikembalikan tetap dicatat LUNAS, tetapi order
+            // tidak dihidupkan dan stok tidak dipotong ulang. Perlu refund admin.
+            $lateSettlement = $order->order_status === Order::STATUS_CANCELLED
+                && $order->stock_restored_at
+                && $mappedStatus['payment_status'] === 'PAID';
+
+            // Notifikasi non-pembayaran untuk order batal yang stoknya sudah
+            // dikembalikan tetap diabaikan.
             if ($order->order_status === Order::STATUS_CANCELLED
                 && $order->stock_restored_at
-                && $orderStatus !== Order::STATUS_CANCELLED) {
+                && ! $lateSettlement) {
                 return;
             }
 
-            // Simpan status transaksi Midtrans
-            $payment->transaction_status = $transactionStatus;
+            if ($lateSettlement) {
+                $orderStatus = Order::STATUS_CANCELLED;
+            }
 
-            // Simpan status pembayaran
+            // Simpan detail transaksi Midtrans.
+            $payment->transaction_status = $transactionStatus;
             $payment->payment_status = $mappedStatus['payment_status'];
+            $payment->fraud_status = $payload['fraud_status'] ?? $payment->fraud_status;
+            $payment->payment_type = $payload['payment_type'] ?? $payment->payment_type;
+
+            if (
+                ! empty($payload['transaction_id'])
+                && ! Payment::where('transaction_id', $payload['transaction_id'])
+                    ->where('id', '!=', $payment->id)
+                    ->exists()
+            ) {
+                $payment->transaction_id = $payload['transaction_id'];
+            }
 
             // Status order tidak boleh turun dari COMPLETED (mis. notifikasi
             // settlement duplikat yang datang setelah admin menyelesaikan order).
@@ -468,6 +520,15 @@ class MidtransService
                 $this->stockService->restoreForOrder($order);
             }
 
+            if (
+                $lateSettlement
+                && ! str_contains((string) $order->notes, self::LATE_PAYMENT_NOTE)
+            ) {
+                $order->notes = trim(
+                    (string) $order->notes . "\n" . now()->format('Y-m-d H:i:s') . ' — ' . self::LATE_PAYMENT_NOTE
+                );
+            }
+
             // Simpan raw notification
             $payment->raw_response = $payload;
 
@@ -475,7 +536,7 @@ class MidtransService
             $order->save();
         });
 
-        Log::info('Midtrans notification processed successfully', [
+        $this->safeLog('info', 'Midtrans notification processed successfully', [
             'order_id' => $orderId,
             'transaction_status' => $transactionStatus,
             'payment_status' => $mappedStatus['payment_status'],

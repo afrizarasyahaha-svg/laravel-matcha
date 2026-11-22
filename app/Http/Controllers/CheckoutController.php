@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Services\CartService;
 use App\Services\Payment\MidtransService;
+use App\Services\RajaOngkirService;
 use App\Services\StockService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -16,7 +17,9 @@ use Illuminate\Validation\ValidationException;
 
 class CheckoutController extends Controller
 {
-    private const ONGKIR_FLAT = 10000;
+    public function __construct(
+        private readonly RajaOngkirService $rajaOngkir
+    ) {}
 
     private const PICKUP_OPTIONS = [
         'Secepatnya (± 15 menit)',
@@ -28,8 +31,10 @@ class CheckoutController extends Controller
     {
         $rows = $cart->rows();
         $subtotal = $cart->subtotal();
-        $ongkir = self::ONGKIR_FLAT;
+        // Ongkir dihitung dinamis setelah tujuan & layanan dipilih di halaman checkout.
+        $ongkir = 0;
         $pickupOptions = self::PICKUP_OPTIONS;
+        $originLabel = config('services.rajaongkir.origin_label', '');
 
         // Token sekali pakai untuk mencegah dua submit membuat dua pesanan.
         // Disimpan juga di session agar token buatan sembarangan ditolak.
@@ -43,7 +48,8 @@ class CheckoutController extends Controller
             'subtotal',
             'ongkir',
             'pickupOptions',
-            'checkoutToken'
+            'checkoutToken',
+            'originLabel'
         ));
     }
 
@@ -55,8 +61,13 @@ class CheckoutController extends Controller
             'type' => ['required', 'in:antar,ambil'],
             'address' => ['required_if:type,antar', 'nullable', 'string', 'max:500'],
             'pickup' => ['nullable', 'string', 'max:100'],
+            'shipping_destination_id' => ['required_if:type,antar', 'nullable', 'string', 'max:100'],
+            'shipping_destination_label' => ['nullable', 'string', 'max:255'],
+            'shipping_postal_code' => ['nullable', 'string', 'max:20'],
+            'shipping_courier' => ['required_if:type,antar', 'nullable', 'string', 'max:50'],
+            'shipping_service' => ['required_if:type,antar', 'nullable', 'string', 'max:50'],
             'checkout_token' => ['required', 'uuid'],
-            'payment_method' => ['required', 'in:'.implode(',', [
+            'payment_method' => ['required', 'in:' . implode(',', [
                 Order::PAYMENT_METHOD_CASH,
                 Order::PAYMENT_METHOD_QRIS,
                 Order::PAYMENT_METHOD_BANK_TRANSFER,
@@ -65,6 +76,9 @@ class CheckoutController extends Controller
             'name.required' => 'Nama penerima wajib diisi.',
             'phone.required' => 'Nomor telepon wajib diisi.',
             'address.required_if' => 'Alamat wajib diisi untuk pesanan diantar.',
+            'shipping_destination_id.required_if' => 'Tujuan pengiriman wajib dipilih.',
+            'shipping_courier.required_if' => 'Kurir wajib dipilih.',
+            'shipping_service.required_if' => 'Layanan pengiriman wajib dipilih.',
             'checkout_token.required' => 'Token checkout tidak ditemukan. Muat ulang halaman checkout.',
             'checkout_token.uuid' => 'Token checkout tidak valid.',
             'payment_method.required' => 'Metode pembayaran wajib dipilih.',
@@ -94,13 +108,14 @@ class CheckoutController extends Controller
         // Hitung ulang harga di server (tidak mempercayai harga dari session/klien)
         $itemsData = [];
         $subtotal = 0;
+        $totalWeightGrams = 0;
 
         foreach ($rows as $row) {
             $product = Product::with('variants')->find($row['product_id']);
 
             if (! $product || ! $product->is_active) {
                 throw ValidationException::withMessages([
-                    'cart' => 'Produk "'.$row['name'].'" sudah tidak tersedia.',
+                    'cart' => 'Produk "' . $row['name'] . '" sudah tidak tersedia.',
                 ]);
             }
 
@@ -112,26 +127,31 @@ class CheckoutController extends Controller
 
                 if (! $variant) {
                     throw ValidationException::withMessages([
-                        'cart' => 'Varian untuk produk "'.$product->name.'" tidak ditemukan.',
+                        'cart' => 'Varian untuk produk "' . $product->name . '" tidak ditemukan.',
                     ]);
                 }
             }
 
             if ($variants->isNotEmpty() && ! $variant) {
                 throw ValidationException::withMessages([
-                    'cart' => 'Pilih varian untuk produk "'.$product->name.'".',
+                    'cart' => 'Pilih varian untuk produk "' . $product->name . '".',
                 ]);
             }
 
             if ($variants->isEmpty() && $variant) {
                 throw ValidationException::withMessages([
-                    'cart' => 'Produk "'.$product->name.'" tidak memiliki varian.',
+                    'cart' => 'Produk "' . $product->name . '" tidak memiliki varian.',
                 ]);
             }
 
             $unitPrice = (int) $product->base_price + ($variant ? (int) $variant->additional_price : 0);
             $quantity = (int) $row['qty'];
             $subtotal += $unitPrice * $quantity;
+
+            // Berat dihitung server-side dari data produk; klien tidak boleh menentukannya.
+            // Produk makanan/minuman memakai fallback 500 gram per satuan.
+            $unitWeight = (int) ($product->weight_grams ?: 500);
+            $totalWeightGrams += max(1, $unitWeight) * $quantity;
 
             // Menyiapkan data item dengan sweetness dan note dari keranjang
             $itemsData[] = [
@@ -144,7 +164,64 @@ class CheckoutController extends Controller
             ];
         }
 
-        $shippingFee = $data['type'] === 'antar' ? self::ONGKIR_FLAT : 0;
+        // Metadata pengiriman selalu berasal dari server. Nilai shipping_* dari
+        // klien hanya dipakai sebagai kunci pencocokan tarif, bukan sebagai harga.
+        $shippingFee = 0;
+        $shippingData = [
+            'shipping_courier' => null,
+            'shipping_service' => null,
+            'shipping_etd' => null,
+            'shipping_destination_id' => null,
+            'shipping_destination_label' => null,
+            'shipping_weight_grams' => 0,
+            'shipping_postal_code' => null,
+        ];
+
+        if ($data['type'] === 'antar') {
+            $courier = Str::lower(trim((string) $data['shipping_courier']));
+            $service = Str::lower(trim((string) $data['shipping_service']));
+
+            try {
+                $rates = $this->rajaOngkir->getRates(
+                    (string) $data['shipping_destination_id'],
+                    $totalWeightGrams,
+                    [$courier]
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Gagal mengambil tarif RajaOngkir saat checkout', [
+                    'destination' => $data['shipping_destination_id'],
+                    'weight_grams' => $totalWeightGrams,
+                    'error' => $e->getMessage(),
+                ]);
+
+                throw ValidationException::withMessages([
+                    'shipping_service' => 'Ongkir sementara tidak dapat dihitung. Silakan coba lagi.',
+                ]);
+            }
+
+            $matchedRate = collect($rates)->first(function (array $rate) use ($courier, $service) {
+                return Str::lower((string) ($rate['courier'] ?? '')) === $courier
+                    && Str::lower((string) ($rate['service'] ?? '')) === $service;
+            });
+
+            if (! $matchedRate) {
+                throw ValidationException::withMessages([
+                    'shipping_service' => 'Layanan pengiriman tidak tersedia untuk tujuan ini. Silakan pilih layanan lain.',
+                ]);
+            }
+
+            $shippingFee = max(0, (int) ($matchedRate['cost'] ?? 0));
+            $shippingData = [
+                'shipping_courier' => (string) ($matchedRate['courier'] ?? $courier),
+                'shipping_service' => (string) ($matchedRate['service'] ?? $service),
+                'shipping_etd' => (string) ($matchedRate['etd'] ?? '') ?: null,
+                'shipping_destination_id' => (string) $data['shipping_destination_id'],
+                'shipping_destination_label' => $data['shipping_destination_label'] ?? null,
+                'shipping_weight_grams' => $totalWeightGrams,
+                'shipping_postal_code' => $data['shipping_postal_code'] ?? null,
+            ];
+        }
+
         $totalAmount = $subtotal + $shippingFee;
 
         $shippingAddress = $data['type'] === 'antar'
@@ -160,6 +237,7 @@ class CheckoutController extends Controller
                 $token,
                 $itemsData,
                 $shippingFee,
+                $shippingData,
                 $subtotal,
                 $totalAmount,
                 $shippingAddress,
@@ -167,7 +245,7 @@ class CheckoutController extends Controller
                 $stockService
             ) {
                 // Generate order number unik, misal: MATCHA-YYYYMMDD-XXXX
-                $orderNumber = 'MATCHA-'.date('Ymd').'-'.strtoupper(Str::random(5));
+                $orderNumber = 'MATCHA-' . date('Ymd') . '-' . strtoupper(Str::random(5));
 
                 $order = Order::create([
                     'user_id' => $request->user()?->id,
@@ -186,6 +264,7 @@ class CheckoutController extends Controller
                     'order_status' => $isCash ? Order::STATUS_PROCESSING : Order::STATUS_PENDING,
                     'payment_status' => 'UNPAID',
                     'expires_at' => $isCash ? null : now()->addMinutes(config('services.midtrans.expiry_minutes', 15)),
+                    ...$shippingData,
                 ]);
 
                 $order->items()->createMany($itemsData);
