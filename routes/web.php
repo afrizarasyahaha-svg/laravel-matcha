@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\ExpenseController;
 use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\OrderController as AdminOrderController;
 use App\Http\Controllers\Admin\ProductController as AdminProductController;
@@ -120,4 +121,10 @@ Route::prefix('admin')
             ->name('reports.weekly');
         Route::get('/laporan-penjualan/bulanan', [ReportController::class, 'monthly'])
             ->name('reports.monthly');
+        Route::get('/pengeluaran', [ExpenseController::class, 'index'])->name('expenses.index');
+        Route::get('/pengeluaran/create', [ExpenseController::class, 'create'])->name('expenses.create');
+        Route::post('/pengeluaran', [ExpenseController::class, 'store'])->name('expenses.store');
+        Route::get('/pengeluaran/{expense}/edit', [ExpenseController::class, 'edit'])->name('expenses.edit');
+        Route::put('/pengeluaran/{expense}', [ExpenseController::class, 'update'])->name('expenses.update');
+        Route::delete('/pengeluaran/{expense}', [ExpenseController::class, 'destroy'])->name('expenses.destroy');
     });

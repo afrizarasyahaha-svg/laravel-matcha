@@ -17,6 +17,9 @@
                 <div class="min-w-0 flex-1">
                     <div class="text-sm font-bold text-amber-900">Peringatan Stok Menipis</div>
                     <div class="text-xs text-amber-800">{{ $lowStock }} produk memiliki varian di bawah batas minimum.</div>
+                    @if ($newAlerts->isNotEmpty())
+                    <div class="mt-1 text-xs font-bold text-amber-900">Baru: {{ $newAlerts->join(', ') }}</div>
+                    @endif
                 </div>
                 <a href="{{ route('admin.stock.index') }}" class="btn-matcha !py-2 no-underline">Lihat Stok</a>
             </div>

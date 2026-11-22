@@ -4,11 +4,14 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ProductVariant;
+use App\Services\StockAlertService;
 
 class StockController extends Controller
 {
-    public function index()
+    public function index(StockAlertService $stockAlerts)
     {
+        $stockAlerts->sync();
+
         $variants = ProductVariant::query()
             ->with(['product.lowStockAlert'])
             ->join('products', 'products.id', '=', 'product_variants.product_id')

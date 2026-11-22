@@ -33,7 +33,8 @@ class Navigation
                 ],
             ],
             ['label' => 'Pesanan', 'icon' => 'bi-receipt', 'url' => route('admin.orders.index'), 'active' => 'admin.orders.*'],
-                        [
+            ['label' => 'Pengeluaran', 'icon' => 'bi-wallet2', 'url' => route('admin.expenses.index'), 'active' => 'admin.expenses.*'],
+            [
                 'label' => 'Rekap Penjualan',
                 'icon' => 'bi-bar-chart-line',
                 'children' => [

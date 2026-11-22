@@ -6,10 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\Product;
 use Illuminate\Support\Facades\DB;
+use App\Services\StockAlertService;
 
 class DashboardController extends Controller
 {
-    public function index()
+    public function index(StockAlertService $stockAlerts)
     {
         $todayRevenue = (int) Order::query()
             ->where('order_status', Order::STATUS_COMPLETED)
@@ -28,6 +29,8 @@ class DashboardController extends Controller
 
         $recentOrders = Order::query()->withCount('items')->latest()->take(5)->get();
 
+        $newAlerts = $stockAlerts->sync();
+
         return view('admin.dashboard', compact(
             'todayRevenue',
             'todayOrders',
@@ -35,6 +38,7 @@ class DashboardController extends Controller
             'completed',
             'lowStock',
             'recentOrders',
+            'newAlerts',
         ));
     }
 }
