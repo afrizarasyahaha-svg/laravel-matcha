@@ -9,17 +9,14 @@
             <x-stat-card label="Selesai" :value="$completed" note="Total" tone="muted" icon="bi-check2-circle" />
         </div>
 
-        @if ($lowStock > 0)
+        @if ($newAlerts->isNotEmpty())
             <div class="mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
                 <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white">
                     <i class="bi bi-exclamation-lg"></i>
                 </span>
                 <div class="min-w-0 flex-1">
                     <div class="text-sm font-bold text-amber-900">Peringatan Stok Menipis</div>
-                    <div class="text-xs text-amber-800">{{ $lowStock }} produk memiliki varian di bawah batas minimum.</div>
-                    @if ($newAlerts->isNotEmpty())
                     <div class="mt-1 text-xs font-bold text-amber-900">Baru: {{ $newAlerts->join(', ') }}</div>
-                    @endif
                 </div>
                 <a href="{{ route('admin.stock.index') }}" class="btn-matcha !py-2 no-underline">Lihat Stok</a>
             </div>

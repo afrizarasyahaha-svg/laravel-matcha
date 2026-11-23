@@ -21,12 +21,6 @@ class DashboardController extends Controller
         $processing = Order::query()->where('order_status', Order::STATUS_PROCESSING)->count();
         $completed = Order::query()->where('order_status', Order::STATUS_COMPLETED)->count();
 
-        $lowStock = Product::with(['variants', 'lowStockAlert'])
-            ->get()
-            ->filter(fn (Product $product) => $product->lowStockAlert
-                && $product->variants->contains(fn ($variant) => $variant->stock < $product->lowStockAlert->min_threshold))
-            ->count();
-
         $recentOrders = Order::query()->withCount('items')->latest()->take(5)->get();
 
         $newAlerts = $stockAlerts->sync();
@@ -36,7 +30,6 @@ class DashboardController extends Controller
             'todayOrders',
             'processing',
             'completed',
-            'lowStock',
             'recentOrders',
             'newAlerts',
         ));

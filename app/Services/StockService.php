@@ -17,6 +17,10 @@ use Illuminate\Validation\ValidationException;
  */
 class StockService
 {
+    public function __construct(private readonly StockAlertService $stockAlertService)
+    {
+    }
+
     /**
      * Potong stok sesuai item pesanan dan tandai bahwa order sudah memotong stok.
      *
@@ -64,6 +68,7 @@ class StockService
         }
 
         $order->forceFill(['stock_deducted_at' => now()])->save();
+        $this->stockAlertService->sync();
     }
 
     /**
